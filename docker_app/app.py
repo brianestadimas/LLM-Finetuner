@@ -7,16 +7,12 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# Global flags and references
 is_running = False
-process = None  # Reference to the subprocess
-log_file_path = "model_logs.txt"  # Path to the log file
+process = None 
+log_file_path = "model_logs.txt" 
 
 
 def run_model_in_background(epoch):
-    """
-    Runs the model (phi3v.py) in a background process and logs all output to a file.
-    """
     global is_running, process
 
     is_running = True
