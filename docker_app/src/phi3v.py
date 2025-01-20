@@ -178,7 +178,7 @@ class FinetunePhi3V:
             r=peft_r, 
             lora_alpha=peft_alpha, 
             lora_dropout=peft_dropout, 
-            target_modules=["q_proj", "v_proj"]
+            target_modules=["q_proj", "v_proj"],
         )
         self.learning_rate = learning_rate
         self.warmup_ratio = warmup_ratio
@@ -199,8 +199,9 @@ class FinetunePhi3V:
         )
 
         model = get_peft_model(self.base_model, self.peft_config)
-        for param in model.parameters():
-            param.requires_grad = True
+        # for param in model.parameters():
+        #     if param.dtype in [torch.float16, torch.float32, torch.bfloat16, torch.complex64, torch.complex128]:
+        #         param.requires_grad = True
 
         training_args = TrainingArguments(
             learning_rate=self.learning_rate,
