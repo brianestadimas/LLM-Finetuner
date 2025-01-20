@@ -68,7 +68,7 @@ def initialize_model(checkpoint_root: str = "./model_cp"):
     return MODEL, PROCESSOR
 
 
-def run_inference(image: Image.Image, user_input: str) -> str:
+def run_inference(image: Image.Image, user_input: str, temperature: float = 0.0, max_tokens: int = 500) -> str:
     model, processor = initialize_model()
 
     # Construct messages for a typical Phi-3 style prompt
@@ -92,8 +92,8 @@ def run_inference(image: Image.Image, user_input: str) -> str:
 
     # Generation parameters
     generation_args = {
-        "max_new_tokens": 500,
-        "temperature": 0.0,
+        "max_new_tokens": max_tokens,
+        "temperature": temperature,
         "do_sample": False
     }
 

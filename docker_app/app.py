@@ -289,6 +289,8 @@ def inference():
     if 'input' not in request.form:
         return jsonify({"error": "Missing 'input' in form data."}), 400
     user_input = request.form['input'].strip()
+    temperature = float(request.form.get('temperature', 0.0))  # Default: 0.0
+    max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
 
     # Check if we got an image
     if 'image' not in request.files:
@@ -300,7 +302,7 @@ def inference():
     try:
         # Open as PIL image
         image = Image.open(file.stream).convert("RGB")
-        result = run_inference(image, user_input)
+        result = run_inference(image, user_input, temperature, max_tokens)
         return jsonify({"result": result}), 200
     except Exception as e:
         print(f"Error in /inference: {str(e)}")
@@ -319,6 +321,9 @@ def inference_b64():
 
     user_input = data.get('input', '').strip()
     image_b64 = data.get('image', '')
+    temperature = float(request.form.get('temperature', 0.0))  # Default: 0.0
+    max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
+
 
     if not user_input:
         return jsonify({"error": "Missing 'input' in JSON."}), 400
@@ -330,7 +335,7 @@ def inference_b64():
         image_data = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
-        result = run_inference(image, user_input)
+        result = run_inference(image, user_input, temperature, max_tokens)
         return jsonify({"result": result}), 200
     except Exception as e:
         print(f"Error in /inference_b64: {str(e)}")
