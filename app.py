@@ -19,50 +19,24 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 REDIRECT_URI = os.getenv('REDIRECT_URI')
 
-@app.route('/run_model', methods=['POST'])
-def finetune_route_post():
-    try:
-        upload_dir = os.path.join(os.getcwd(), "uploads")
-        os.makedirs(upload_dir, exist_ok=True)  
-
-        metadata_str = request.form.get('data', '')
-        if not metadata_str:
-            return jsonify({"error": "No metadata provided"}), 400
-
-        try:
-            metadata = json.loads(metadata_str)
-            print(metadata)
-        except Exception as e:
-            return jsonify({"error": f"Could not parse JSON: {e}"}), 400
-
-        saved_files = []
-        for file_key in request.files:
-            file_storage = request.files[file_key]
-            if file_storage and file_storage.filename:
-                save_path = os.path.join(upload_dir, file_storage.filename)
-                file_storage.save(save_path)
-
-                # Log and store the path
-                print(f"Uploaded file: {file_key} -> Saved to {save_path}")
-                saved_files.append(save_path)
-
-        return jsonify({
-            "message": "Finetuning POST data received",
-            "metadata": metadata,
-            "saved_files": saved_files
-        }), 200
-
-    except Exception as e:
-        print("Error in /run_model POST:", str(e))
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/finetune', methods=['GET'])
+@app.route('/finetune', methods=['POST'])
 def finetune_route():
-    email = request.args.get('email')
-    if not email:
-        return jsonify({"error": "Email is required"}), 400
+    """
+    Initiate a finetuning run for a user with additional parameters.
+    """
+    data = request.get_json()
 
+    # Validate required parameters
+    email = data.get('email')
+    model_name = data.get('model_name')
+    model_type = data.get('model_type')
+    description = data.get('description')
+    runpod_api_key = data.get('runpod_api_key')
+
+    if not email or not model_name or not model_type or not description:
+        return jsonify({"error": "email, model_name, model_type, and description are required"}), 400
+
+    # Retrieve user by email
     user = User.query.filter_by(email=email).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
@@ -74,51 +48,194 @@ def finetune_route():
             return jsonify({"error": "User already has an active simulation"}), 400
 
     # Create a new run
-    new_run = Run(status="pending")
+    new_run = Run(
+        user_id=user.id,
+        status="pending",
+        model_name=model_name,
+        model_type=model_type,
+        description=description
+    )
     db.session.add(new_run)
     db.session.commit()
 
     run_id = new_run.id
-    try:
-        # Create a new pod and retrieve the podcast_id
-        pod = runpod.create_pod(
-            name=f"FT-Run-{run_id}",
-            image_name="brianarfeto/finetune-vlm:latest",
-            gpu_type_id="NVIDIA GeForce RTX 3070",
-            gpu_count=1,
-            volume_in_gb=10,
-            container_disk_in_gb=5,
-            ports="5000/http",
-        )
-        podcast_id = pod.get('id') + "-5000"
-        if not podcast_id:
-            raise ValueError("Failed to retrieve podcast_id from the pod creation response")
 
-        # Update the run and associate it with the user
-        new_run.status = "running"
-        new_run.podcast_id = podcast_id
-        user.run_id = run_id
-        db.session.commit()
+    # Define GPU fallback list
+    gpu_types = [
+        # "NVIDIA GeForce RTX 3070",
+        # "NVIDIA GeForce RTX 3080",
+        "NVIDIA RTX A4000",
+        "NVIDIA GeForce RTX 3090"
+    ]
 
-        return jsonify({
-            "message": "Finetuning initiated successfully.",
-            "run_id": run_id,
-            "podcast_id": podcast_id
-        }), 200
+    podcast_id = None
+    last_error = None
+    
+    if runpod_api_key:
+        runpod.api_key = runpod_api_key
 
-    except Exception as e:
-        # Rollback changes if pod creation fails
-        db.session.rollback()  # Rollback any uncommitted changes
+    # Attempt pod creation with fallback GPUs
+    for gpu in gpu_types:
         try:
-            # Delete the run and nullify the user's run_id
+            pod = runpod.create_pod(
+                name=f"FT-Run-{run_id}",
+                image_name="brianarfeto/finetune-vlm:latest",
+                gpu_type_id=gpu,
+                gpu_count=1,
+                volume_in_gb=10,
+                container_disk_in_gb=10,
+                ports="5000/http",
+            )
+            podcast_id = pod.get('id') + "-5000"
+            if podcast_id:
+                break  # If successful, exit loop
+
+        except Exception as e:
+            last_error = str(e)  # Store the error and try the next GPU
+
+    if not podcast_id:
+        runpod.api_key = Config.RUNPOD_KEY
+        db.session.rollback()
+        try:
             db.session.delete(new_run)
             user.run_id = None
             db.session.commit()
         except Exception as inner_error:
             return jsonify({"error": f"Failed to clean up after error: {str(inner_error)}"}), 500
 
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Failed to create a pod: {last_error}"}), 500
 
+    # Update the run and associate it with the user
+    new_run.status = "running"
+    new_run.podcast_id = podcast_id
+    user.run_id = run_id
+    db.session.commit()
+    
+    runpod.api_key = Config.RUNPOD_KEY
+
+    return jsonify({
+        "message": "Finetuning initiated successfully.",
+        "run_id": run_id,
+        "podcast_id": podcast_id,
+        "model_name": new_run.model_name,
+        "model_type": new_run.model_type,
+        "description": new_run.description,
+        "status": new_run.status,
+    }), 200
+
+
+
+@app.route('/finished_finetuning', methods=['GET'])
+def finished_finetuning():
+    """
+    Removes the run_id from the associated user and marks the run as completed or removed.
+    Accepts podcast_id as a parameter.
+    """
+    params = request.args
+    podcast_id = params.get('podcast_id')
+
+    if not podcast_id:
+        return jsonify({"error": "Podcast ID is required"}), 400
+
+    # Find the run associated with the podcast_id
+    run = Run.query.filter_by(podcast_id=podcast_id).first()
+    if not run:
+        return jsonify({"error": "Run with the provided podcast ID not found"}), 404
+
+    # Find the user associated with the run_id
+    user = User.query.filter_by(run_id=run.id).first()
+    if not user:
+        return jsonify({"error": "No user associated with this run"}), 404
+
+    try:
+        # Update the run status to "finished" or "removed"
+        run.status = "finished"  # or "removed" based on your logic
+
+        # Remove run_id from the user
+        user.run_id = None
+
+        # Commit changes to the database
+        db.session.commit()
+
+        return jsonify({"message": "Finetuning finished successfully", "user_id": user.id, "run_id": run.id}), 200
+
+    except Exception as e:
+        db.session.rollback()  # Rollback in case of errors
+        return jsonify({"error": f"Failed to finish finetuning: {str(e)}"}), 500
+
+@app.route('/delete', methods=['GET'])
+def delete_run():
+    """
+    Deletes a run based on the provided podcast_id.
+    If the associated pod does not exist, it still proceeds to delete the run instance.
+    """
+    podcast_id = request.args.get('podcast_id')
+    if not podcast_id:
+        return jsonify({"error": "Podcast ID is required"}), 400
+
+    pod_id = podcast_id.replace("-5000", "")
+
+    run = Run.query.filter_by(podcast_id=podcast_id).first()
+    if not run:
+        return jsonify({"error": "Run not found"}), 404
+
+    try:
+        # Attempt to stop the pod
+        runpod.stop_pod(pod_id)
+        runpod.terminate_pod(pod_id)
+
+    except Exception as e:
+        error_message = str(e)
+
+        # Check if the error message indicates the pod does not exist
+        if "Attempted to stop pod that does not exist" in error_message:
+            print(f"Pod {pod_id} does not exist, proceeding with run deletion...")
+        else:
+            return jsonify({"error": f"Failed to delete run: {error_message}"}), 500
+    try:
+        # Remove the run from the database
+        db.session.delete(run)
+        db.session.commit()
+        return jsonify({"message": f"Run with podcast_id {podcast_id} deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+
+@app.route('/run_list', methods=['GET'])
+def run_list():
+    user_email = request.args.get('email')
+    if not user_email:
+        return jsonify({"error": "Email is required"}), 400
+
+    try:
+        # Find the user by email
+        user = User.query.filter_by(email=user_email).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Get the runs associated with the user
+        user_runs = Run.query.filter_by(user_id=user.id).order_by(Run.id.desc()).all()
+
+        # Format the runs as a list of dictionaries
+        run_data = [
+            {
+                "run_id": run.id,
+                "podcast_id": run.podcast_id,
+                "status": run.status,
+                "model_name": run.model_name,
+                "model_type": run.model_type,
+                "description": run.description,
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+                "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+            }
+            for run in user_runs
+        ]
+
+        return jsonify(run_data), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to retrieve run list: {str(e)}"}), 500
 
 
 @app.route('/get_podcast', methods=['GET'])

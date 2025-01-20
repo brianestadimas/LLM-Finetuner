@@ -4,7 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Load environment variables
 load_dotenv()
@@ -12,15 +12,21 @@ load_dotenv()
 # Initialize database
 db = SQLAlchemy()
 
-# Define the Feed model
 class Run(db.Model):
     __tablename__ = 'runs'
     id = db.Column(db.Integer, primary_key=True)
-    status = db.Column(db.String(50))
-    podcast_id = db.Column(db.String(255))
+    status = db.Column(db.String(50), nullable=True)
+    podcast_id = db.Column(db.String(255), nullable=True)
     fired = db.Column(db.Boolean, default=False)
+    
+    # New fields
+    user_id = db.Column(db.Integer, nullable=True)
+    model_name = db.Column(db.String(255), nullable=True)
+    model_type = db.Column(db.String(255), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=True, default=lambda: datetime.now(tz=timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=True, default=lambda: datetime.now(tz=timezone.utc), onupdate=lambda: datetime.now(tz=timezone.utc))
 
-# New User model
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -29,9 +35,7 @@ class User(db.Model):
     picture = db.Column(db.String(255))
     run_id = db.Column(db.Integer, db.ForeignKey('runs.id'), nullable=True)
 
-    # If you want, you can define a relationship
     run = db.relationship('Run', backref='user', lazy='joined', uselist=False)
-
 
 def create_app():
     # Initialize Flask app
