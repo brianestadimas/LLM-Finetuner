@@ -165,13 +165,20 @@ class FinetunePhi3V:
             quantization_config=self.bnb_config,
             device_map="auto"
         )
+        # self.peft_config = LoraConfig(
+        #     task_type=TaskType.CAUSAL_LM,
+        #     r=peft_r,
+        #     lora_alpha=peft_alpha,
+        #     lora_dropout=peft_dropout,
+        #     # target_modules=["q_proj", "v_proj"]
+        #     target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
+        # )
         self.peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM,
-            r=peft_r,
-            lora_alpha=peft_alpha,
-            lora_dropout=peft_dropout,
-            # target_modules=["q_proj", "v_proj"]
-            target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
+            task_type=TaskType.CAUSAL_LM, 
+            r=peft_r, 
+            lora_alpha=peft_alpha, 
+            lora_dropout=peft_dropout, 
+            target_modules=["q_proj", "v_proj"]
         )
         self.learning_rate = learning_rate
         self.warmup_ratio = warmup_ratio
@@ -192,6 +199,9 @@ class FinetunePhi3V:
         )
 
         model = get_peft_model(self.base_model, self.peft_config)
+        for param in model.parameters():
+            param.requires_grad = True
+
         training_args = TrainingArguments(
             learning_rate=self.learning_rate,
             output_dir='./model_cp',
