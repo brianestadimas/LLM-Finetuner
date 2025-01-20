@@ -146,8 +146,8 @@ class FinetunePhi3V:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
+            # bnb_4bit_compute_dtype=torch.float16,
+            # bnb_4bit_use_double_quant=True,
         )
         self.model_id = model_id
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
@@ -165,7 +165,8 @@ class FinetunePhi3V:
             r=peft_r,
             lora_alpha=peft_alpha,
             lora_dropout=peft_dropout,
-            target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
+            target_modules=["q_proj", "v_proj"]
+            # target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
         )
         self.learning_rate = learning_rate
         self.warmup_ratio = warmup_ratio

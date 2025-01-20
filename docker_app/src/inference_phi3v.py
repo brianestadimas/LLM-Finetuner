@@ -3,10 +3,20 @@ import torch
 from PIL import Image
 from transformers import AutoModelForCausalLM, AutoProcessor, BitsAndBytesConfig
 from peft import PeftModel
+from torchvision import transforms
 
 # Globals for holding the loaded model and processor
 MODEL = None
 PROCESSOR = None
+
+image_transform = transforms.Compose([
+    transforms.Resize((336, 336)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.48145466, 0.4578275, 0.40821073],
+        std=[0.26862954, 0.26130258, 0.27577711]
+    )
+])
 
 def find_highest_checkpoint(checkpoint_dir: str) -> str:
     checkpoints = [
@@ -32,17 +42,17 @@ def initialize_model(checkpoint_root: str = "./model_cp"):
     # 1. Base model
     model_id = "microsoft/Phi-3-vision-128k-instruct"
     print("Loading base Phi-3 Vision model...")
-    # bnb_config = BitsAndBytesConfig(
-    #     load_in_8bit=True,  # Enable 8-bit loading
-    #     bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
-    #     bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
-    #     device_map="cuda"  # Automatically place on available GPUs
-    # )
+    bnb_config = BitsAndBytesConfig(
+        load_in_8bit=True,  # Enable 8-bit loading
+        bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
+        bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
+        device_map="cuda"  # Automatically place on available GPUs
+    )
     
     base_model = AutoModelForCausalLM.from_pretrained(
         model_id,
         device_map="cuda",
-        # quantization_config=bnb_config,
+        quantization_config=bnb_config,
         trust_remote_code=True,
         torch_dtype="auto",
         _attn_implementation='eager'
@@ -70,7 +80,8 @@ def initialize_model(checkpoint_root: str = "./model_cp"):
 
 def run_inference(image: Image.Image, user_input: str, temperature: float = 0.0, max_tokens: int = 500) -> str:
     model, processor = initialize_model()
-
+    image = image_transform(image)
+    
     # Construct messages for a typical Phi-3 style prompt
     messages = [
         {"role": "user", "content": f"<|image_1|>\n{user_input}"}
