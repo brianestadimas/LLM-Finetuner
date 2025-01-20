@@ -9,14 +9,6 @@ from torchvision import transforms
 MODEL = None
 PROCESSOR = None
 
-image_transform = transforms.Compose([
-    transforms.Resize((336, 336)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.48145466, 0.4578275, 0.40821073],
-        std=[0.26862954, 0.26130258, 0.27577711]
-    )
-])
 
 def find_highest_checkpoint(checkpoint_dir: str) -> str:
     checkpoints = [
@@ -80,7 +72,6 @@ def initialize_model(checkpoint_root: str = "./model_cp"):
 
 def run_inference(image: Image.Image, user_input: str, temperature: float = 0.0, max_tokens: int = 500) -> str:
     model, processor = initialize_model()
-    image = image_transform(image)
     
     # Construct messages for a typical Phi-3 style prompt
     messages = [

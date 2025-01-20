@@ -170,8 +170,8 @@ class FinetunePhi3V:
             r=peft_r,
             lora_alpha=peft_alpha,
             lora_dropout=peft_dropout,
-            target_modules=["q_proj", "v_proj"]
-            # target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
+            # target_modules=["q_proj", "v_proj"]
+            target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
         )
         self.learning_rate = learning_rate
         self.warmup_ratio = warmup_ratio
