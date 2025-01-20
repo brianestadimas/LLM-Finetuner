@@ -144,10 +144,16 @@ class FinetunePhi3V:
         """
         self.epochs = epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.bnb_config = BitsAndBytesConfig(
+        #     load_in_8bit=True,
+        #     bnb_4bit_compute_dtype=torch.float16,
+        #     bnb_4bit_use_double_quant=True,
+        # )
         self.bnb_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            # bnb_4bit_compute_dtype=torch.float16,
-            # bnb_4bit_use_double_quant=True,
+            load_in_8bit=True,  # Enable 8-bit loading
+            bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
+            bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
+            device_map="cuda"  # Automatically place on available GPUs
         )
         self.model_id = model_id
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
