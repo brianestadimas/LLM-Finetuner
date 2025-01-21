@@ -3,7 +3,6 @@ import torch
 from PIL import Image
 from transformers import AutoModelForCausalLM, AutoProcessor, BitsAndBytesConfig
 from peft import PeftModel
-from torchvision import transforms
 
 # Globals for holding the loaded model and processor
 MODEL = None
@@ -24,27 +23,25 @@ def find_highest_checkpoint(checkpoint_dir: str) -> str:
     return os.path.join(checkpoint_dir, highest_checkpoint)
 
 
-def initialize_model(checkpoint_root: str = "./model_cp"):
+def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
     global MODEL, PROCESSOR
 
     # If already loaded, just return
     if MODEL is not None and PROCESSOR is not None:
         return MODEL, PROCESSOR
 
-    # 1. Base model
-    model_id = "microsoft/Phi-3-vision-128k-instruct"
-    print("Loading base Phi-3 Vision model...")
-    bnb_config = BitsAndBytesConfig(
-        load_in_8bit=True,  # Enable 8-bit loading
-        bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
-        bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
-        device_map="cuda"  # Automatically place on available GPUs
-    )
+    print("Loading base model...")
+    # bnb_config = BitsAndBytesConfig(
+    #     load_in_8bit=True,  # Enable 8-bit loading
+    #     bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
+    #     bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
+    #     device_map="cuda"  # Automatically place on available GPUs
+    # )
     
     base_model = AutoModelForCausalLM.from_pretrained(
         model_id,
         device_map="cuda",
-        quantization_config=bnb_config,
+        # quantization_config=bnb_config,
         trust_remote_code=True,
         torch_dtype="auto",
         _attn_implementation='eager'
@@ -70,14 +67,15 @@ def initialize_model(checkpoint_root: str = "./model_cp"):
     return MODEL, PROCESSOR
 
 
-def run_inference(image: Image.Image, user_input: str, temperature: float = 0.0, max_tokens: int = 500) -> str:
-    model, processor = initialize_model()
+def run_inference_phi3v(image: Image.Image, user_input: str, temperature: float = 0.0, 
+                        max_tokens: int = 500, model_id: str = "microsoft/Phi-3-vision-128k-instruct") -> str:
+
+    model, processor = initialize_model(model_id)
     
     # Construct messages for a typical Phi-3 style prompt
     messages = [
         {"role": "user", "content": f"<|image_1|>\n{user_input}"}
     ]
-
     # Tokenize prompt using the built-in chat template
     prompt = processor.tokenizer.apply_chat_template(
         messages, 

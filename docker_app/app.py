@@ -4,6 +4,7 @@ import time
 from flask import Flask, Response, jsonify, request, send_file
 import torch
 from src.phi3v import FinetunePhi3V
+from src.qwenvl import FinetuneQwenVL
 from flask_cors import CORS
 import os
 import json
@@ -13,7 +14,8 @@ import logging
 import re
 import base64
 from PIL import Image
-from src.inference_phi3v import run_inference
+from src.inference_phi3v import run_inference_phi3v
+from src.inference_qwenvl import run_inference_qwenvl
 
 app = Flask(__name__)
 CORS(app)
@@ -54,6 +56,18 @@ for handler in flask_logger.handlers:
 flask_handler = logging.StreamHandler(stream=log_file)
 flask_handler.addFilter(ExcludeAPILoggingFilter())
 flask_logger.addHandler(flask_handler)
+
+
+MODEL_HF_URL = {
+    "Phi3V": "microsoft/Phi-3-vision-128k-instruct",
+    "Phi3.5V": "microsoft/Phi-3.5-vision-instruct",
+    "Qwen2VL": "unsloth/Qwen2-VL-7B-Instruct",
+    "Qwen2VL-Mini": "unsloth/Qwen2-VL-2B-Instruct",
+    "Pixtral": "unsloth/Pixtral-12B-2409-bnb-4bit",
+    "Llava1.6-Mistral": "unsloth/llava-v1.6-mistral-7b-hf",
+    "Llava1.5": "unsloth/llava-v1.6-mistral-7b-hf",
+    "Llama3.2V": "unsloth/Llama-3.2-11B-Vision-bnb-4bit"
+}
 
 
 @app.route('/run_model', methods=['POST'])
@@ -119,21 +133,17 @@ def run_model():
                 "output": output_text
             })
 
-        model_type = metadata.get("model_id", "Phi3V")
-        model_hf_url = {
-            "Phi3V": "microsoft/Phi-3-vision-128k-instruct",
-            "Phi3.5V": "microsoft/Phi-3.5-vision-instruct",
-        }
+        model_type = metadata.get("model_id", "Qwen2VL")
         finetune_params = {
-            "epochs": metadata.get("epochs", 1),
-            "learning_rate": metadata.get("learning_rate", 1e-4),
+            "epochs": metadata.get("epochs", 10),
+            "learning_rate": metadata.get("learning_rate", 5e-5),
             "warmup_ratio": metadata.get("warmup_ratio", 0.1),
-            "gradient_accumulation_steps": metadata.get("gradient_accumulation_steps", 64),
+            "gradient_accumulation_steps": metadata.get("gradient_accumulation_steps", 8),
             "optim": metadata.get("optim", "adamw_torch"),
-            "model_type": model_hf_url[model_type],
+            "model_type": MODEL_HF_URL[model_type],
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
-            "peft_dropout": metadata.get("peft_dropout", 0.05),
+            "peft_dropout": metadata.get("peft_dropout", 0.01),
         }
 
         def finetune_task(data: List[dict], params: dict):
@@ -153,7 +163,19 @@ def run_model():
                         peft_alpha=params["peft_alpha"],
                         peft_dropout=params["peft_dropout"],
                     )
-
+                else:
+                    finetuner = FinetuneQwenVL(
+                        data=data,
+                        epochs=params["epochs"],
+                        learning_rate=params["learning_rate"],
+                        warmup_ratio=params["warmup_ratio"],
+                        gradient_accumulation_steps=params["gradient_accumulation_steps"],
+                        optim=params["optim"],
+                        model_id=params["model_type"],
+                        peft_r=params["peft_r"],
+                        peft_alpha=params["peft_alpha"],
+                        peft_dropout=params["peft_dropout"],
+                    )
                 finetuner.run()
 
                 print("Finetuning completed successfully.")
@@ -257,21 +279,31 @@ def stop_model():
 def inference():
     if 'input' not in request.form:
         return jsonify({"error": "Missing 'input' in form data."}), 400
+    if 'image' not in request.files:
+        return jsonify({"error": "Missing 'image' file in form data."}), 400
+    if 'model_type' not in request.form:
+        return jsonify({"error": "Missing 'model_type' in form data."}), 400
+
     user_input = request.form['input'].strip()
     temperature = float(request.form.get('temperature', 0.0))  # Default: 0.0
     max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
+    model_type = request.form['model_type']
 
-    # Check if we got an image
-    if 'image' not in request.files:
-        return jsonify({"error": "Missing 'image' file in form data."}), 400
     file = request.files['image']
     if file.filename == '':
         return jsonify({"error": "No file selected for 'image'."}), 400
 
     try:
         image = Image.open(file.stream).convert("RGB")
-        result = run_inference(image, user_input, temperature, max_tokens)
+        model_id = MODEL_HF_URL[model_type]
+
+        if model_type in ["Phi3V", "Phi3.5V"]:
+            result = run_inference_phi3v(image, user_input, temperature, max_tokens, model_id)
+        else:
+            result = run_inference_qwenvl(image, user_input, temperature, max_tokens, model_id)
+
         return jsonify({"result": result}), 200
+
     except Exception as e:
         print(f"Error in /inference: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -285,22 +317,28 @@ def inference_b64():
 
     user_input = data.get('input', '').strip()
     image_b64 = data.get('image', '')
-    temperature = float(request.form.get('temperature', 0.0))  # Default: 0.0
-    max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
-
+    temperature = float(request.form.get('temperature', 0.0)) 
+    max_tokens = int(request.form.get('max_tokens', 500))
+    model_type = data.get('model_type', '')
 
     if not user_input:
         return jsonify({"error": "Missing 'input' in JSON."}), 400
     if not image_b64:
         return jsonify({"error": "Missing 'image' in JSON."}), 400
+    if not model_type:
+        return jsonify({"error": "Missing 'model_type' in JSON."}), 400
 
     try:
         # Decode the base64 image
         image_data = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
-
-        result = run_inference(image, user_input, temperature, max_tokens)
+        model_id = MODEL_HF_URL[model_type]
+        if model_type in ["Phi3V", "Phi3.5V"]:
+            result = run_inference_phi3v(image, user_input, temperature, max_tokens, model_id)
+        else:
+            result = run_inference_qwenvl(image, user_input, temperature, max_tokens, model_id)
         return jsonify({"result": result}), 200
+
     except Exception as e:
         print(f"Error in /inference_b64: {str(e)}")
         return jsonify({"error": str(e)}), 500
