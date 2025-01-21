@@ -82,8 +82,8 @@ def finetune_route():
                 image_name="brianarfeto/finetune-vlm:latest",
                 gpu_type_id=gpu,
                 gpu_count=1,
-                volume_in_gb=20,
-                container_disk_in_gb=10,
+                volume_in_gb=10,
+                container_disk_in_gb=20,
                 ports="5000/http",
             )
             podcast_id = pod.get('id') + "-5000"
