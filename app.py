@@ -64,8 +64,8 @@ def finetune_route():
     gpu_types = [
         # "NVIDIA GeForce RTX 3070",
         # "NVIDIA GeForce RTX 3080",
-        "NVIDIA RTX A4000",
-        "NVIDIA GeForce RTX 3090"
+        # "NVIDIA GeForce RTX 3090",
+        "NVIDIA A40"
     ]
 
     podcast_id = None
