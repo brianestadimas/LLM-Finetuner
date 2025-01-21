@@ -127,8 +127,6 @@ class FinetunePhi3V:
                  formatter="<|user|>\n<|image_1|>{prompt}<|end|><|assistant|>{answer}<|end|>"
                 ):
         """
-        Initializes the FinetunePhi3V class with training parameters and data.
-
         Args:
             data (list of dict): List containing data points with 'image', 'input', and 'output'.
             epochs (int): Number of training epochs.
@@ -144,11 +142,6 @@ class FinetunePhi3V:
         """
         self.epochs = epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.bnb_config = BitsAndBytesConfig(
-        #     load_in_8bit=True,
-        #     bnb_4bit_compute_dtype=torch.float16,
-        #     bnb_4bit_use_double_quant=True,
-        # )
         self.bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,  # Enable 8-bit loading
             bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation

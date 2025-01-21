@@ -24,7 +24,6 @@ finetune_thread = None
 
 log_file_path = "model_logs.txt"
 
-# Custom logging filter to exclude API access logs
 class ExcludeAPILoggingFilter(logging.Filter):
     def filter(self, record):
         # Define patterns to exclude
@@ -42,16 +41,13 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 logger = logging.getLogger()
 logger.addFilter(ExcludeAPILoggingFilter())
 
-# Redirect stdout and stderr to the log file
 log_file = open(log_file_path, "a", buffering=1)
 sys.stdout = log_file
 sys.stderr = log_file
 
-# Configure Flask logging
 flask_logger = logging.getLogger("werkzeug")  # Flask's default logger
 flask_logger.setLevel(logging.INFO)
 
-# Replace default handlers with filtered handlers
 for handler in flask_logger.handlers:
     flask_logger.removeHandler(handler)
 
@@ -83,12 +79,10 @@ def run_model():
         except json.JSONDecodeError as e:
             return jsonify({"error": f"Could not parse JSON metadata: {e}"}), 400
 
-        # Extract 'data' entries
         data_entries = metadata.get("data", [])
         if not isinstance(data_entries, list) or not data_entries:
             return jsonify({"error": "Invalid or empty 'data' provided in metadata."}), 400
 
-        # Save uploaded files
         uploaded_files = request.files.getlist('files')
         if len(uploaded_files) != len(data_entries):
             return jsonify({
@@ -107,7 +101,6 @@ def run_model():
             else:
                 return jsonify({"error": f"File at index {idx} is invalid."}), 400
 
-        # Reconstruct data for ImageTextDataset
         reconstructed_data = []
         for idx, entry in enumerate(data_entries):
             input_text = entry.get("input", "").strip()
@@ -126,61 +119,57 @@ def run_model():
                 "output": output_text
             })
 
-        # Extract fine-tuning parameters from metadata with default values
+        model_type = metadata.get("model_id", "Phi3V")
+        model_hf_url = {
+            "Phi3V": "microsoft/Phi-3-vision-128k-instruct",
+            "Phi3.5V": "microsoft/Phi-3.5-vision-instruct",
+        }
         finetune_params = {
             "epochs": metadata.get("epochs", 1),
             "learning_rate": metadata.get("learning_rate", 1e-4),
             "warmup_ratio": metadata.get("warmup_ratio", 0.1),
             "gradient_accumulation_steps": metadata.get("gradient_accumulation_steps", 64),
             "optim": metadata.get("optim", "adamw_torch"),
-            "model_id": metadata.get("model_id", "microsoft/Phi-3-vision-128k-instruct"),
+            "model_type": model_hf_url[model_type],
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
             "peft_dropout": metadata.get("peft_dropout", 0.05),
         }
 
-        # Define the finetuning task
         def finetune_task(data: List[dict], params: dict):
             global is_running
             is_running = True
             try:
-                # Initialize the finetuner
-                finetuner = FinetunePhi3V(
-                    data=data,
-                    epochs=params["epochs"],
-                    learning_rate=params["learning_rate"],
-                    warmup_ratio=params["warmup_ratio"],
-                    gradient_accumulation_steps=params["gradient_accumulation_steps"],
-                    optim=params["optim"],
-                    model_id=params["model_id"],
-                    peft_r=params["peft_r"],
-                    peft_alpha=params["peft_alpha"],
-                    peft_dropout=params["peft_dropout"],
-                )
+                if model_type in ["Phi3V", "Phi3.5V"]:
+                    finetuner = FinetunePhi3V(
+                        data=data,
+                        epochs=params["epochs"],
+                        learning_rate=params["learning_rate"],
+                        warmup_ratio=params["warmup_ratio"],
+                        gradient_accumulation_steps=params["gradient_accumulation_steps"],
+                        optim=params["optim"],
+                        model_id=params["model_type"],
+                        peft_r=params["peft_r"],
+                        peft_alpha=params["peft_alpha"],
+                        peft_dropout=params["peft_dropout"],
+                    )
 
-                # Run the finetuning process
                 finetuner.run()
 
-                # Optionally, handle post-finetuning steps here
                 print("Finetuning completed successfully.")
 
             except Exception as e:
-                # Log any exceptions to the log file
                 with open(log_file_path, "a", encoding="utf-8") as log_file:
                     log_file.write(f"ERROR during finetuning: {str(e)}\n")
                 print(f"ERROR during finetuning: {e}")
             finally:
-                # Clear references to the finetuner and underlying model
                 del finetuner
-                # Force garbage collection
                 import gc
                 gc.collect()
-                # Clear PyTorch cache on GPU
                 torch.cuda.empty_cache()
 
                 is_running = False
 
-        # Start the finetuning in a background thread
         finetune_thread = threading.Thread(target=finetune_task, args=(reconstructed_data, finetune_params))
         finetune_thread.start()
 
@@ -213,7 +202,6 @@ def stream_logs():
                 else:
                     time.sleep(0.1)  # Wait for new lines
 
-            # After finetuning completes, stream remaining lines
             log_file.seek(0)
             for line in log_file:
                 yield f"{line.strip()}\n"
@@ -233,9 +221,6 @@ def current_logs():
 
 @app.route('/download_logs', methods=['GET'])
 def download_logs():
-    """
-    Endpoint to download the model_logs.txt file.
-    """
     global log_file_path
     if os.path.exists(log_file_path):
         return send_file(log_file_path, as_attachment=True, attachment_filename='model_logs.txt')
@@ -245,9 +230,6 @@ def download_logs():
 
 @app.route('/logs_history', methods=['GET'])
 def logs_history():
-    """
-    Returns all logs from the log file rendered as HTML.
-    """
     try:
         with open(log_file_path, "r", encoding="utf-8") as log_file:
             logs = log_file.read()
@@ -259,20 +241,12 @@ def logs_history():
 
 @app.route('/stop_model', methods=['POST'])
 def stop_model():
-    """
-    Stops the currently running model process.
-    """
     global finetune_thread, is_running
 
     if not is_running:
         return jsonify({"error": "No model is currently running."}), 400
 
     try:
-        # Since the finetuning is running in a background thread,
-        # implementing a stop mechanism requires modifying FinetunePhi3V to support it.
-        # One approach is to use a threading.Event to signal the finetuner to stop.
-        # For simplicity, we'll inform the user that stopping is not implemented.
-
         return jsonify({"error": "Stopping the finetuning process is not implemented."}), 400
 
     except Exception as e:
@@ -281,11 +255,6 @@ def stop_model():
 
 @app.route('/inference', methods=['POST'])
 def inference():
-    """
-    Receives multipart/form-data with 'input' (text prompt) and 'image' (file).
-    Returns JSON with the model's generated text.
-    """
-    # Check if we got 'input'
     if 'input' not in request.form:
         return jsonify({"error": "Missing 'input' in form data."}), 400
     user_input = request.form['input'].strip()
@@ -300,7 +269,6 @@ def inference():
         return jsonify({"error": "No file selected for 'image'."}), 400
 
     try:
-        # Open as PIL image
         image = Image.open(file.stream).convert("RGB")
         result = run_inference(image, user_input, temperature, max_tokens)
         return jsonify({"result": result}), 200
@@ -311,10 +279,6 @@ def inference():
 
 @app.route('/inference_b64', methods=['POST'])
 def inference_b64():
-    """
-    Receives JSON: {'input': <text prompt>, 'image': <base64 string>}.
-    Returns JSON with the model's generated text.
-    """
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid JSON or empty request body."}), 400
