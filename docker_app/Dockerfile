@@ -7,7 +7,11 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
+
+# Set the C compiler explicitly
+ENV CC=gcc
 
 # Copy requirements first for caching
 COPY requirements.txt .
