@@ -342,5 +342,81 @@ def google_login():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/inference/<model_id>', methods=['POST'])
+def inference(model_id):
+    model_endpoint = f"https://{model_id}.proxy.runpod.net/inference"
+
+    input_text = request.form.get("input")
+    temperature = request.form.get("temperature", 0.0)  # Default: 0.0
+    max_tokens = request.form.get("max_tokens", 500)    # Default: 500
+    image = request.files.get("image")
+
+    if not input_text or not image:
+        return jsonify({"error": "Missing required parameters: input and/or image"}), 400
+
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": "Invalid model_id (podcast_id) or model not found."}), 404
+
+    model_type = run.model_type 
+    if not model_type:
+        return jsonify({"error": "Model type not found for this model_id."}), 400
+
+    # Prepare request payload
+    files = {"image": (image.filename, image.stream, image.mimetype)}
+    data = {
+        "input": input_text,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "model_type": model_type
+    }
+    try:
+        response = requests.post(model_endpoint, files=files, data=data)
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Request failed: {str(e)}"}), 500
+
+
+@app.route('/inference_b64/<model_id>', methods=['POST'])
+def inference_b64(model_id):
+    model_endpoint = f"https://{model_id}.proxy.runpod.net/inference_b64"
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON or empty request body."}), 400
+
+    input_text = data.get("input", "").strip()
+    image_b64 = data.get("image", "")
+    
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": "Invalid model_id (podcast_id) or model not found."}), 404
+
+    model_type = run.model_type 
+    if not model_type:
+        return jsonify({"error": "Model type not found for this model_id."}), 400
+
+    temperature = float(data.get("temperature", 0.0))
+    max_tokens = int(data.get("max_tokens", 500))
+
+    if not input_text or not image_b64:
+        return jsonify({"error": "Missing required parameters: input and/or image"}), 400
+
+    payload = {
+        "input": input_text,
+        "image": image_b64,  # Forward base64 as a string
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "model_type": model_type
+    }
+
+    try:
+        response = requests.post(model_endpoint, json=payload, timeout=120)
+        return jsonify(response.json()), response.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Request to model API failed: {str(e)}"}), 500
+
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
