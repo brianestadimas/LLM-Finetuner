@@ -82,7 +82,7 @@ def finetune_route():
                 image_name="brianarfeto/finetune-vlm:latest",
                 gpu_type_id=gpu,
                 gpu_count=1,
-                volume_in_gb=18,
+                volume_in_gb=20,
                 container_disk_in_gb=10,
                 ports="5000/http",
             )
