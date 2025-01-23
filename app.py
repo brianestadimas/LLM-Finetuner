@@ -81,7 +81,7 @@ def finetune_route():
             if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini"]:
                 container_size = 20
             else:
-                container_size = 32
+                container_size = 36
             pod = runpod.create_pod(
                 name=f"FT-Run-{run_id}",
                 image_name="brianarfeto/finetune-vlm:latest",
