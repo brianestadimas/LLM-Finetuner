@@ -78,13 +78,17 @@ def finetune_route():
     # Attempt pod creation with fallback GPUs
     for gpu in gpu_types:
         try:
+            if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini"]:
+                container_size = 20
+            else:
+                container_size = 32
             pod = runpod.create_pod(
                 name=f"FT-Run-{run_id}",
                 image_name="brianarfeto/finetune-vlm:latest",
                 gpu_type_id=gpu,
                 gpu_count=1,
                 volume_in_gb=10,
-                container_disk_in_gb=20,
+                container_disk_in_gb=container_size,
                 ports="5000/http",
             )
             podcast_id = pod.get('id') + "-5000"
