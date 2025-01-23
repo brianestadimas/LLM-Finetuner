@@ -2,6 +2,7 @@ import io
 import threading
 import time
 from flask import Flask, Response, jsonify, request, send_file
+import requests
 import torch
 from src.phi3v import FinetunePhi3V
 from src.qwenvl import FinetuneQwenVL
@@ -180,10 +181,30 @@ def run_model():
 
                 print("Finetuning completed successfully.")
 
+                model_id = metadata.get("model_id")
+                response = requests.get(
+                    "https://console.vais.app/api/update_status",
+                    params={"model_id": model_id, "status": "finished"}
+                )
+                if response.status_code == 200:
+                    print(f"Successfully notified API about model completion: {model_id}")
+                else:
+                    print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
+
             except Exception as e:
                 with open(log_file_path, "a", encoding="utf-8") as log_file:
                     log_file.write(f"ERROR during finetuning: {str(e)}\n")
                 print(f"ERROR during finetuning: {e}")
+                model_id = metadata.get("model_id")
+                response = requests.get(
+                    "https://console.vais.app/api/update_status",
+                    params={"model_id": model_id, "status": "failed"}
+                )
+                if response.status_code == 200:
+                    print(f"Successfully notified API about model failure: {model_id}")
+                else:
+                    print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
+                
             finally:
                 del finetuner
                 import gc

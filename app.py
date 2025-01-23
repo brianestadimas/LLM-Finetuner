@@ -202,6 +202,7 @@ def delete_run():
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
 
+
 @app.route('/run_list', methods=['GET'])
 def run_list():
     user_email = request.args.get('email')
@@ -416,6 +417,50 @@ def inference_b64(model_id):
         return jsonify(response.json()), response.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request to model API failed: {str(e)}"}), 500
+
+
+@app.route('/update_status', methods=['GET'])
+def update_status():
+    model_id = request.args.get('model_id')
+    status = request.args.get('status')
+
+    if not model_id or not status:
+        return jsonify({"error": "model_id and status are required"}), 400
+
+    # Find the corresponding run
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": "Run not found for the given model_id"}), 404
+
+    try:
+        # Update run status
+        if status.lower() not in ["finished", "failed"]:
+            return jsonify({"error": "Invalid status. Must be 'finished' or 'failed'"}), 400
+
+        run.status = status.lower()
+
+        # Find the user associated with this run
+        user = User.query.filter_by(run_id=run.id).first()
+        if user:
+            user.run_id = None  # Nullify user's run_id since the process is completed
+
+        # Commit changes to database
+        db.session.commit()
+        
+        if status.lower() == "failed":
+            pod_id = model_id.replace("-5000", "")
+            runpod.stop_pod(pod_id)
+            runpod.terminate_pod(pod_id)
+
+        return jsonify({
+            "message": f"Run {run.id} status updated to '{status}' and user run_id nullified.",
+            "run_id": run.id,
+            "new_status": run.status
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to update status: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
