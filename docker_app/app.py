@@ -134,7 +134,7 @@ def run_model():
                 "output": output_text
             })
 
-        model_type = metadata.get("model_id", "Qwen2VL")
+        model_type = metadata.get("model_type", "Qwen2VL")
         finetune_params = {
             "epochs": metadata.get("epochs", 10),
             "learning_rate": metadata.get("learning_rate", 5e-5),
@@ -181,13 +181,13 @@ def run_model():
 
                 print("Finetuning completed successfully.")
 
-                model_id = metadata.get("model_id")
+                model_pod_id = metadata.get("model_id")
                 response = requests.get(
                     "https://console.vais.app/api/update_status",
-                    params={"model_id": model_id, "status": "finished"}
+                    params={"model_id": model_pod_id, "status": "finished"}
                 )
                 if response.status_code == 200:
-                    print(f"Successfully notified API about model completion: {model_id}")
+                    print(f"Successfully notified API about model completion: {model_pod_id}")
                 else:
                     print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
 
