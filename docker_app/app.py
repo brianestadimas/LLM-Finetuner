@@ -273,8 +273,8 @@ def run_model():
 
 
 
-@app.route('/run_model_lm', methods=['POST'])
-def run_model():
+@app.route('/run_model_llm', methods=['POST'])
+def run_model_llm():
     global is_running, finetune_thread
 
     if is_running:
@@ -316,7 +316,7 @@ def run_model():
                 "output": output_text
             })
 
-        model_type = metadata.get("model_type", "Phi3.5-mini")
+        model_type = metadata.get("model_type", "Phi-3.5-mini")
         finetune_params = {
             "epochs": metadata.get("epochs", 10),
             "learning_rate": metadata.get("learning_rate", 5e-5),
@@ -390,7 +390,7 @@ def run_model():
         }), 200
 
     except Exception as e:
-        print("Error in /run_model_lm POST:", str(e))
+        print("Error in /run_model_llm POST:", str(e))
         return jsonify({"error": str(e)}), 500
 
 
