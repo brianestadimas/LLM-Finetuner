@@ -394,6 +394,7 @@ def run_model_llm():
         return jsonify({"error": str(e)}), 500
 
 
+
 @app.route('/logs', methods=['GET'])
 def stream_logs():
     global is_running
