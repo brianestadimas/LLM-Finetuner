@@ -185,7 +185,7 @@ def run_model():
             "learning_rate": metadata.get("learning_rate", 5e-5),
             "warmup_ratio": metadata.get("warmup_ratio", 0.1),
             "gradient_accumulation_steps": metadata.get("gradient_accumulation_steps", 8),
-            "optim": metadata.get("optim", "adamw_torch"),
+            "optim": metadata.get("optimizer", "adamw_torch"),
             "model_type": MODEL_HF_URL[model_type],
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
@@ -281,25 +281,13 @@ def run_model_llm():
         return jsonify({"error": "Finetuning is already in progress. Please wait until it finishes."}), 400
 
     try:
-        metadata_str = request.form.get('data', '')
-        if not metadata_str:
+        metadata = request.get_json()
+        if not metadata:
             return jsonify({"error": "No metadata provided."}), 400
-
-        try:
-            metadata = json.loads(metadata_str)
-            print("Received metadata:", metadata)
-        except json.JSONDecodeError as e:
-            return jsonify({"error": f"Could not parse JSON metadata: {e}"}), 400
 
         data_entries = metadata.get("data", [])
         if not isinstance(data_entries, list) or not data_entries:
             return jsonify({"error": "Invalid or empty 'data' provided in metadata."}), 400
-
-        uploaded_files = request.files.getlist('files')
-        if len(uploaded_files) != len(data_entries):
-            return jsonify({
-                "error": "Number of uploaded files does not match number of data entries."
-            }), 400
 
         reconstructed_data = []
         for idx, entry in enumerate(data_entries):
@@ -322,7 +310,7 @@ def run_model_llm():
             "learning_rate": metadata.get("learning_rate", 5e-5),
             "warmup_ratio": metadata.get("warmup_ratio", 0.1),
             "gradient_accumulation_steps": metadata.get("gradient_accumulation_steps", 8),
-            "optim": metadata.get("optim", "adamw_torch"),
+            "optim": metadata.get("optimizer", "adamw_torch"),
             "model_type": MODEL_HF_URL_LLM[model_type],
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
