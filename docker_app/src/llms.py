@@ -110,7 +110,6 @@ class FinetuneLM:
             logging_strategy="steps",
             # Remove dataset_kwargs to enable automatic tokenization
             max_seq_length=2048,
-            callbacks=[CustomLoggingCallback()]
         )
 
         # Prepare model for training
@@ -123,6 +122,7 @@ class FinetuneLM:
             tokenizer=self.tokenizer,
             train_dataset=dataset,
             args=training_args,
+            callbacks=[CustomLoggingCallback()]
         )
         trainer.train()
         
