@@ -1,0 +1,5 @@
+.olive-cache
+data_train/
+model_cp/
+models/
+__pycache__/
