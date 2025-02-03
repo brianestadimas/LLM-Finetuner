@@ -4,7 +4,7 @@
 SOURCE="$(dirname "$0")/builder.py"
 
 # Find the TARGET location dynamically (inside the Docker container)
-TARGET=$(find / -path "*/onnxruntime_genai/models/builder.py" -type f -print -quit)
+TARGET=$(find /app -path "*/onnxruntime_genai/models/builder.py" -type f -print -quit)
 
 if [ -z "$TARGET" ]; then
     echo "Error: builder.py not found in /app!"

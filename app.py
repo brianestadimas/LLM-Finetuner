@@ -128,8 +128,6 @@ def finetune_route():
         "status": new_run.status,
     }), 200
 
-
-
 @app.route('/finished_finetuning', methods=['GET'])
 def finished_finetuning():
     """
@@ -138,6 +136,7 @@ def finished_finetuning():
     """
     params = request.args
     podcast_id = params.get('podcast_id')
+    is_llm = params.get('is_llm', False)
 
     if not podcast_id:
         return jsonify({"error": "Podcast ID is required"}), 400
@@ -155,7 +154,7 @@ def finished_finetuning():
     try:
         # Update the run status to "finished" or "removed"
         run.status = "finished"  # or "removed" based on your logic
-
+        run.is_llm = is_llm
         # Remove run_id from the user
         user.run_id = None
 
@@ -207,7 +206,6 @@ def delete_run():
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
 
-
 @app.route('/run_list', methods=['GET'])
 def run_list():
     user_email = request.args.get('email')
@@ -232,6 +230,7 @@ def run_list():
                 "model_name": run.model_name,
                 "model_type": run.model_type,
                 "description": run.description,
+                "is_llm": run.is_llm,
                 "created_at": run.created_at.isoformat() if run.created_at else None,
                 "updated_at": run.updated_at.isoformat() if run.updated_at else None,
             }
@@ -422,6 +421,49 @@ def inference_b64(model_id):
         return jsonify(response.json()), response.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request to model API failed: {str(e)}"}), 500
+
+
+@app.route('/inference-llm', methods=['POST'])
+def inference_llm():
+    # Retrieve JSON payload from the request body.
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing JSON body"}), 400
+
+    input_text = data.get("input")
+    model_id = data.get("model_id")
+    temperature = data.get("temperature", 0.0)  # Default: 0.0
+    max_tokens = data.get("max_tokens", 1000)    # Default: 500
+
+    if not input_text or not model_id:
+        return jsonify({"error": "Missing required parameters: input and/or model_id"}), 400
+
+    # Build the model endpoint using the provided model_id.
+    model_endpoint = f"https://{model_id}.proxy.runpod.net/inference-llm"
+
+    # Look up the model's record.
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": "Invalid model_id (podcast_id) or model not found."}), 404
+
+    model_type = run.model_type 
+    if not model_type:
+        return jsonify({"error": "Model type not found for this model_id."}), 400
+
+    # Prepare JSON payload for the inference request.
+    payload = {
+        "input": input_text,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "model_type": model_type
+    }
+    try:
+        # Post JSON payload to the model endpoint.
+        response = requests.post(model_endpoint, json=payload)
+        return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Request failed: {str(e)}"}), 500
 
 
 @app.route('/update_status', methods=['GET'])

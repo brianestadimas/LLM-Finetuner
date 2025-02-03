@@ -18,6 +18,7 @@ class Run(db.Model):
     status = db.Column(db.String(50), nullable=True)
     podcast_id = db.Column(db.String(255), nullable=True)
     fired = db.Column(db.Boolean, default=False)
+    is_llm = db.Column(db.Boolean, default=False, nullable=True)
     
     # New fields
     user_id = db.Column(db.Integer, nullable=True)

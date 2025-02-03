@@ -17,12 +17,9 @@ class CustomLoggingCallback(TrainerCallback):
 
 
 class FinetuneLM:
-    """
-    Text-only fine-tuning of unsloth/Phi-3.5-mini-instruct with LoRA adapters.
-    """
     def __init__(
         self,
-        data,                           # A list of {"input": str, "output": str} dicts
+        data, 
         epochs=1,
         learning_rate=1e-4,
         warmup_ratio=0.1,

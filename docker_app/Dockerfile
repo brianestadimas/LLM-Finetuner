@@ -23,10 +23,11 @@ COPY . /app
 # Run the patch script during the build process
 RUN if [ -f "patch/patch_builder.sh" ]; then \
     echo "Running patch/patch_builder.sh"; \
-    bash patch/patch_builder.sh; \
+    bash patch/patch_builder.sh || echo "patch_builder.sh encountered an error, skipping..."; \
     else \
     echo "patch/patch_builder.sh not found, skipping..."; \
     fi
+
 
 # Expose port 5000 for Flask
 EXPOSE 5000

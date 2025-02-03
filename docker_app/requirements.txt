@@ -10,3 +10,6 @@ peft==0.14.0
 pandas==2.2.3
 Pillow==11.1.0
 bitsandbytes==0.45.0
+onnxruntime==1.20.1
+onnxruntime-genai==0.5.2
+optimum
