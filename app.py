@@ -471,7 +471,17 @@ def inference_llm(model_id):
 def update_status():
     model_id = request.args.get('model_id')
     status = request.args.get('status')
-    is_llm = request.args.get('is_llm', False)
+    is_llm_str = request.args.get('is_llm', False)
+
+    if is_llm_str is not None:
+        if is_llm_str.lower() in ['true', '1', 'yes']:
+            is_llm = True
+        elif is_llm_str.lower() in ['false', '0', 'no']:
+            is_llm = False
+        else:
+            return jsonify({"error": "Invalid value for is_llm. Use true or false."}), 400
+    else:
+        is_llm = False
 
     if not model_id or not status:
         return jsonify({"error": "model_id and status are required"}), 400
