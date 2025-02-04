@@ -471,6 +471,7 @@ def inference_llm(model_id):
 def update_status():
     model_id = request.args.get('model_id')
     status = request.args.get('status')
+    is_llm = request.args.get('is_llm', False)
 
     if not model_id or not status:
         return jsonify({"error": "model_id and status are required"}), 400
@@ -486,6 +487,7 @@ def update_status():
             return jsonify({"error": "Invalid status. Must be 'finished' or 'failed'"}), 400
 
         run.status = status.lower()
+        run.is_llm = is_llm
 
         # Find the user associated with this run
         user = User.query.filter_by(run_id=run.id).first()

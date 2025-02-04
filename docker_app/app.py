@@ -229,7 +229,7 @@ def run_model():
                 model_pod_id = metadata.get("model_id")
                 response = requests.get(
                     "https://console.vais.app/api/update_status",
-                    params={"model_id": model_pod_id, "status": "finished"}
+                    params={"model_id": model_pod_id, "status": "finished", "is_llm": False}
                 )
                 if response.status_code == 200:
                     print(f"Successfully notified API about model completion: {model_pod_id}")
@@ -355,7 +355,7 @@ def run_model_llm():
                 model_id = metadata.get("model_id")
                 response = requests.get(
                     "https://console.vais.app/api/update_status",
-                    params={"model_id": model_id, "status": "failed"}
+                    params={"model_id": model_id, "status": "failed", "is_llm": True}
                 )
                 if response.status_code == 200:
                     print(f"Successfully notified API about model failure: {model_id}")
