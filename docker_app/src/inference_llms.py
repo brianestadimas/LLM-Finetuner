@@ -59,7 +59,7 @@ def format_data(tokenizer, user_input):
     except Exception as e:
         formatted_text = f"<|im_start|>user\n{user_input}<|im_end|>\n<|im_start|>assistant"
     
-    return {"text": formatted_text}
+    return formatted_text
 
 
 def run_inference_lm(user_input: str, temperature: float = 0.0, max_tokens: int = 1000, model_id: str = "unsloth/Phi-3.5-mini-instruct") -> str:
