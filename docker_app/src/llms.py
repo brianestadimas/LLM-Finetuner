@@ -125,13 +125,13 @@ class FinetuneLM:
             callbacks=[CustomLoggingCallback()]
         )
         trainer.train()
+        print(f"Saving model..")
         
         save_path = "./model_cp/saved"
 
-        model = model.merge_and_unload()
+        model = self.model.merge_and_unload()
         model.save_pretrained(save_path)
         self.tokenizer.save_pretrained(save_path)
-        
         try:
             cmd_auto_opt = [
                 "olive", "auto-opt",
@@ -144,6 +144,7 @@ class FinetuneLM:
                 "--log_level", "1",
             ]
             subprocess.run(cmd_auto_opt, check=True)
+            print(f"Auto-opt finished")
         except Exception as e:
             print(f"Auto-opt failed: {e}")
         
