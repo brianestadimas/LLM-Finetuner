@@ -425,15 +425,14 @@ def inference_b64(model_id):
         return jsonify({"error": f"Request to model API failed: {str(e)}"}), 500
 
 
-@app.route('/inference-llm', methods=['POST'])
-def inference_llm():
+@app.route('/inference-llm/<model_id>', methods=['POST'])
+def inference_llm(model_id):
     # Retrieve JSON payload from the request body.
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON body"}), 400
 
     input_text = data.get("input")
-    model_id = data.get("model_id")
     temperature = data.get("temperature", 0.0)  # Default: 0.0
     max_tokens = data.get("max_tokens", 1000)    # Default: 500
 
