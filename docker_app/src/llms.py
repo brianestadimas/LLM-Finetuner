@@ -125,7 +125,9 @@ class FinetuneLM:
             callbacks=[CustomLoggingCallback()]
         )
         trainer.train()
-        print(f"Saving model..")
+        
+    def olive_opt(self):
+        print(f"Optimizing model..")
         
         save_path = "./model_cp/saved"
 
