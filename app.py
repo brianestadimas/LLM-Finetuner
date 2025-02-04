@@ -30,6 +30,7 @@ def finetune_route():
     email = data.get('email')
     model_name = data.get('model_name')
     model_type = data.get('model_type')
+    is_llm = data.get('is_llm', False)
     description = data.get('description')
     runpod_api_key = data.get('runpod_api_key')
 
@@ -53,6 +54,7 @@ def finetune_route():
         status="pending",
         model_name=model_name,
         model_type=model_type,
+        is_llm=is_llm,
         description=description
     )
     db.session.add(new_run)
