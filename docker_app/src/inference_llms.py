@@ -57,7 +57,7 @@ def format_data(tokenizer, user_input):
             add_generation_prompt=False,
         )
     except Exception as e:
-        formatted_text += f"<|im_start|>user\n{user_input}<|im_end|>\n<|im_start|>assistant"
+        formatted_text = f"<|im_start|>user\n{user_input}<|im_end|>\n<|im_start|>assistant"
     
     return {"text": formatted_text}
 
