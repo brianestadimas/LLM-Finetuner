@@ -13,3 +13,5 @@ bitsandbytes==0.45.0
 onnxruntime==1.20.1
 onnxruntime-genai==0.5.2
 optimum
+unsloth
+xformers

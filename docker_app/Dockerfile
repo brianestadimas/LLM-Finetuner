@@ -15,7 +15,7 @@ ENV CC=gcc
 # Copy requirements first for caching
 COPY requirements.txt .
 RUN pip install -r requirements.txt 
-RUN pip install --upgrade --no-cache-dir "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+# RUN pip install --upgrade --no-cache-dir "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
 
 # Copy the entire application
 COPY . /app
