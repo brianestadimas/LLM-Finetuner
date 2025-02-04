@@ -335,6 +335,7 @@ def run_model_llm():
                     peft_dropout=params["peft_dropout"],
                 )
                 finetuner.run()
+                print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
 
                 model_pod_id = metadata.get("model_id")
