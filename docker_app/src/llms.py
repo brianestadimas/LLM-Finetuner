@@ -133,11 +133,12 @@ class FinetuneLM:
         print(f"Optimizing model..")
         
         save_path = "./model_cp/saved"
-
-        model = self.model.merge_and_unload()
-        model.save_pretrained(save_path)
-        self.tokenizer.save_pretrained(save_path)
         try:
+            model = self.model.merge_and_unload()
+            model.save_pretrained(save_path)
+            self.tokenizer.save_pretrained(save_path)
+
+            print("Olive auto-opt started")
             cmd_auto_opt = [
                 "olive", "auto-opt",
                 "--model_name_or_path", "model_cp/saved",
