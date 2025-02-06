@@ -82,6 +82,8 @@ def finetune_route():
         try:
             if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini"]:
                 container_size = 20
+            elif model_type in ["DeepSeek-R1-Distill-32B"]:
+                container_size = 60
             else:
                 container_size = 36
             pod = runpod.create_pod(

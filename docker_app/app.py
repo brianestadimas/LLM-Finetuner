@@ -80,6 +80,7 @@ MODEL_HF_URL_LLM = {
     "DeepSeek-R1-Qwen-7B": "unsloth/DeepSeek-R1-Distill-Qwen-7B",
     "DeepSeek-R1-Qwen-1.5B": "unsloth/DeepSeek-R1-Distill-Qwen-1.5B",
     "DeepSeek-R1-Llama-8B": "unsloth/DeepSeek-R1-Distill-Llama-8B",
+    "DeepSeek-R1-Distill-32B": "unsloth/DeepSeek-R1-Distill-Qwen-32B-unsloth-bnb-4bit",
     "Phi-4": "unsloth/phi-4",
     "Meta-Llama-3.1-8B": "unsloth/Meta-Llama-3.1-8B",
     "Llama-3.2-3B": "unsloth/Llama-3.2-3B-Instruct",
