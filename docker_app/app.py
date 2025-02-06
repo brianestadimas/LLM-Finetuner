@@ -348,8 +348,6 @@ def run_model_llm():
                     print(f"Successfully notified API about model completion: {model_pod_id}")
                 else:
                     print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
-                    
-                finetuner.olive_opt()
 
             except Exception as e:
                 with open(log_file_path, "a", encoding="utf-8") as log_file:
@@ -366,6 +364,8 @@ def run_model_llm():
                     print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
                 
             finally:
+                finetuner.olive_opt()
+                
                 del finetuner
                 import gc
                 gc.collect()
