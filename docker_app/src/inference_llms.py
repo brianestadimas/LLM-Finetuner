@@ -46,23 +46,38 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
 
     return MODEL, TOKENIZER
 
-def format_data(tokenizer, user_input):
-    messages = [
-        {"role": "user", "content": user_input},
-    ]
-    try:
-        formatted_text = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=False,
-        )
-    except Exception as e:
-        formatted_text = f"<|im_start|>user\n{user_input}<|im_end|>\n<|im_start|>assistant"
+# def format_data(tokenizer, user_input):
+#     messages = [
+#         {"role": "user", "content": user_input},
+#     ]
+#     try:
+#         formatted_text = tokenizer.apply_chat_template(
+#             messages,
+#             tokenize=False,
+#             add_generation_prompt=False,
+#         )
+#     except Exception as e:
+#         formatted_text = f"<|im_start|>user\n{user_input}<|im_end|>\n<|im_start|>"
     
+#     return formatted_text
+
+def format_data(tokenizer, user_input):
+    """
+    Formats the user input into the Qwen chat template format.
+    """
+    formatted_text = (
+        f"<|im_start|>user\n{user_input}<|im_end|>\n"
+        f"<|im_start|>assistant\n"
+    )
+    formatted_text = (
+            f"<|im_start|>system\nYou are a helpful customer service assistant.<|im_end|>\n"
+            f"<|im_start|>user\n{user_input}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
     return formatted_text
 
 
-def run_inference_lm(user_input: str, temperature: float = 0.0, max_tokens: int = 1000, model_id: str = "unsloth/Phi-3.5-mini-instruct") -> str:
+def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int = 1000, model_id: str = "unsloth/Phi-3.5-mini-instruct") -> str:
 
     model, tokenizer = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
@@ -81,7 +96,7 @@ def run_inference_lm(user_input: str, temperature: float = 0.0, max_tokens: int 
         max_new_tokens=max_tokens,
         temperature=temperature,
         pad_token_id=tokenizer.eos_token_id,
-        do_sample=True,
+        do_sample=False,
     )
     generated_text = tokenizer.decode(
         outputs[0][inputs["input_ids"].shape[1]:], 

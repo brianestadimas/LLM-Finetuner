@@ -49,35 +49,38 @@ class FinetuneLM:
         # 2. Wrap the model with LoRA (text-only)
         self.model = FastLanguageModel.get_peft_model(
             self.base_model,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                            "gate_proj", "up_proj", "down_proj",],
+            target_modules=["q_proj", "k_proj", "v_proj", "up_proj", "down_proj", "o_proj", "gate_proj"],
             r=peft_r,
             lora_alpha=peft_alpha,
             lora_dropout=peft_dropout,
             bias="none",
-            random_state=3407,
             use_rslora=False,
             loftq_config=None
         )
 
+    # def format_data(self, row):
+    #     user_prompt = row["input"]
+    #     assistant_answer = row["output"]
+    #     messages = [
+    #         {"role": "user", "content": user_prompt},
+    #         {"role": "assistant", "content": assistant_answer},
+    #     ]
+    #     try:
+    #         formatted_text = self.tokenizer.apply_chat_template(
+    #             messages,
+    #             tokenize=False,
+    #         )
+    #         print(f"Formatted text: {formatted_text}")
+    #     except Exception as e:
+    #         formatted_text = ""
+    #         for msg in messages:
+    #             formatted_text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+        
+    #     return {"text": formatted_text}
     def format_data(self, row):
         user_prompt = row["input"]
         assistant_answer = row["output"]
-        messages = [
-            {"role": "user", "content": user_prompt},
-            {"role": "assistant", "content": assistant_answer},
-        ]
-        try:
-            formatted_text = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-            )
-        except Exception as e:
-            formatted_text = ""
-            for msg in messages:
-                formatted_text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-        
+        formatted_text = f"<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n{assistant_answer}<|im_end|>"
         return {"text": formatted_text}
 
     def run(self):

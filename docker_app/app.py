@@ -465,7 +465,7 @@ def inference():
         return jsonify({"error": "Missing 'model_type' in form data."}), 400
 
     user_input = request.form['input'].strip()
-    temperature = float(request.form.get('temperature', 0.0))  # Default: 0.0
+    temperature = float(request.form.get('temperature', 1.0))  # Default: 0.0
     max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
     model_type = request.form['model_type']
 
