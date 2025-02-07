@@ -525,8 +525,6 @@ def inference_b64():
         print(f"Error in /inference_b64: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-from flask import request, jsonify
-
 @app.route('/inference-llm', methods=['POST'])
 def inference_llm():
     data = request.get_json()
@@ -549,12 +547,25 @@ def inference_llm():
 
     try:
         result = run_inference_lm(user_input, temperature, max_tokens, model_id)
-        return jsonify({"result": result}), 200
+
+        # Extract <think> content and separate from the result
+        think_match = re.search(r"(.*?)</think>\s*", result, re.DOTALL)
+        if think_match:
+            think_content = think_match.group(1).strip()
+            final_result = result[think_match.end():].strip()  # Remove the <think> section
+        else:
+            think_content = None
+            final_result = result.strip()
+
+        response = {"result": final_result}
+        if think_content:
+            response["think"] = think_content
+
+        return jsonify(response), 200
 
     except Exception as e:
         print(f"Error in /inference: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
 
 
 if __name__ == "__main__":
