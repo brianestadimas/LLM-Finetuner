@@ -150,22 +150,20 @@ def finished_finetuning():
     if not run:
         return jsonify({"error": "Run with the provided podcast ID not found"}), 404
 
-    # Find the user associated with the run_id
-    user = User.query.filter_by(run_id=run.id).first()
-    if not user:
-        return jsonify({"error": "No user associated with this run"}), 404
-
     try:
         # Update the run status to "finished" or "removed"
         run.status = "finished"  # or "removed" based on your logic
         run.is_llm = is_llm
-        # Remove run_id from the user
-        user.run_id = None
+
+        # Find the user associated with the run_id
+        user = User.query.filter_by(run_id=run.id).first()
+        if user:
+            user.run_id = None
 
         # Commit changes to the database
         db.session.commit()
 
-        return jsonify({"message": "Finetuning finished successfully", "user_id": user.id, "run_id": run.id}), 200
+        return jsonify({"message": "Finetuning finished successfully", "run_id": run.id}), 200
 
     except Exception as e:
         db.session.rollback()  # Rollback in case of errors
