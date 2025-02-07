@@ -369,7 +369,10 @@ def run_model_llm():
                 gc.collect()
                 torch.cuda.empty_cache()
                 is_running = False
-                olive_opt()
+                print("Olive auto-opt started")
+                print("Optimizing model...")
+                print("This is running in a background process and can be closed.")
+                # olive_opt()
 
         finetune_thread = threading.Thread(target=finetune_task, args=(reconstructed_data, finetune_params))
         finetune_thread.start()

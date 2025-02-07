@@ -141,9 +141,6 @@ class FinetuneLM:
 
 
 def olive_opt():
-    print("Olive auto-opt started")
-    print("Optimizing model...")
-    print("This is running in a background process and can be closed.")
 
     cmd_auto_opt = [
         "olive", "auto-opt",
