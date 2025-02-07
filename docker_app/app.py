@@ -6,7 +6,7 @@ import requests
 import torch
 from src.phi3v import FinetunePhi3V
 from src.qwenvl import FinetuneQwenVL
-from src.llms import FinetuneLM
+from src.llms import FinetuneLM, olive_opt
 from flask_cors import CORS
 import os
 import json
@@ -364,18 +364,16 @@ def run_model_llm():
                     print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
                 
             finally:
-                finetuner.olive_opt()
-                
                 del finetuner
                 import gc
                 gc.collect()
                 torch.cuda.empty_cache()
-
                 is_running = False
+                olive_opt()
 
         finetune_thread = threading.Thread(target=finetune_task, args=(reconstructed_data, finetune_params))
         finetune_thread.start()
-
+                
         return jsonify({
             "message": "Finetuning has been started.",
             "metadata": metadata,

@@ -129,28 +129,32 @@ class FinetuneLM:
         )
         trainer.train()
         
-    def olive_opt(self):
-        print(f"Optimizing model..")
-        
         save_path = "./model_cp/saved"
         try:
             model = self.model.merge_and_unload()
             model.save_pretrained(save_path)
             self.tokenizer.save_pretrained(save_path)
-
-            print("Olive auto-opt started")
-            cmd_auto_opt = [
-                "olive", "auto-opt",
-                "--model_name_or_path", "model_cp/saved",
-                "--output_path", "model_cp/opt",
-                "--device", "cpu",
-                "--provider", "CPUExecutionProvider",
-                "--use_ort_genai",
-                "--precision", "int4",
-                "--log_level", "1",
-            ]
-            subprocess.run(cmd_auto_opt, check=True)
-            print(f"Auto-opt finished")
+            print(f"Model has been saved")
         except Exception as e:
-            print(f"Auto-opt failed: {e}")
+            print(f"Ignore the model saving")
+        
+def olive_opt():
+    print("Olive auto-opt started")
+    print(f"Optimizing model..")
+    print(f"This is running in background process and can be closed.")
+    try:
+        cmd_auto_opt = [
+            "olive", "auto-opt",
+            "--model_name_or_path", "model_cp/saved",
+            "--output_path", "model_cp/opt",
+            "--device", "cpu",
+            "--provider", "CPUExecutionProvider",
+            "--use_ort_genai",
+            "--precision", "int4",
+            "--log_level", "1",
+        ]
+        subprocess.run(cmd_auto_opt, check=True)
+        print(f"Auto-opt finished")
+    except Exception as e:
+        print(f"Auto-opt failed: {e}")
         
