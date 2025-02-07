@@ -1,5 +1,6 @@
+import psutil
 import torch
-import os
+import os, time
 from transformers import TrainerCallback
 from trl import SFTTrainer, SFTConfig
 from unsloth import FastLanguageModel, is_bf16_supported
@@ -137,24 +138,46 @@ class FinetuneLM:
             print(f"Model has been saved")
         except Exception as e:
             print(f"Ignore the model saving")
-        
+
+
 def olive_opt():
     print("Olive auto-opt started")
-    print(f"Optimizing model..")
-    print(f"This is running in background process and can be closed.")
+    print("Optimizing model...")
+    print("This is running in a background process and can be closed.")
+
+    cmd_auto_opt = [
+        "olive", "auto-opt",
+        "--model_name_or_path", "model_cp/saved",
+        "--output_path", "model_cp/opt",
+        "--device", "cpu",
+        "--provider", "CPUExecutionProvider",
+        "--use_ort_genai",
+        "--precision", "int4",
+        "--log_level", "1",
+    ]
+
+    # Define the memory usage threshold (in percent)
+    memory_threshold = 97
+
     try:
-        cmd_auto_opt = [
-            "olive", "auto-opt",
-            "--model_name_or_path", "model_cp/saved",
-            "--output_path", "model_cp/opt",
-            "--device", "cpu",
-            "--provider", "CPUExecutionProvider",
-            "--use_ort_genai",
-            "--precision", "int4",
-            "--log_level", "1",
-        ]
-        subprocess.run(cmd_auto_opt, check=True)
-        print(f"Auto-opt finished")
+        # Start the subprocess
+        process = subprocess.Popen(cmd_auto_opt)
+        print("Auto-opt process started, monitoring memory usage...")
+
+        # Monitor the process until it completes
+        while process.poll() is None:
+            mem_usage = psutil.virtual_memory().percent
+            if mem_usage >= memory_threshold:
+                print(f"Memory usage is high ({mem_usage}%). Terminating auto-opt process to avoid getting stuck.")
+                process.terminate()  # or process.kill() for a forceful termination
+                break
+            # Check every 1 second
+            time.sleep(1)
+
+        # Wait for the process to finish and get the return code
+        retcode = process.wait()
+        if retcode != 0:
+            raise subprocess.CalledProcessError(retcode, cmd_auto_opt)
+        print("Auto-opt finished successfully.")
     except Exception as e:
         print(f"Auto-opt failed: {e}")
-        
