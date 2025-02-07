@@ -549,7 +549,7 @@ def inference_llm():
         result = run_inference_lm(user_input, temperature, max_tokens, model_id)
 
         # Extract <think> content and separate from the result
-        think_match = re.search(r"(.*?)</think>\s*", result, re.DOTALL)
+        think_match = re.search(r"^(.*?)</think>", result, re.DOTALL)
         if think_match:
             think_content = think_match.group(1).strip()
             final_result = result[think_match.end():].strip()  # Remove the <think> section
