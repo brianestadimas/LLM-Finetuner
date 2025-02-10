@@ -548,10 +548,18 @@ def inference_llm():
     try:
         result = run_inference_lm(user_input, temperature, max_tokens, model_id)
 
-        think_content = result.split("</think>")
-        response = {"result": result}
-        if len(think_content) > 1:
-            response["think"] = think_content[1]
+        # Extract <think> content and separate from the result
+        think_match = re.search(r"^(.*?)</think>", result, re.DOTALL)
+        if think_match:
+            think_content = think_match.group(1).strip()
+            final_result = result[think_match.end():].strip()  # Remove the <think> section
+        else:
+            think_content = None
+            final_result = result.strip()
+
+        response = {"result": final_result}
+        if think_content:
+            response["think"] = think_content
 
         return jsonify(response), 200
 

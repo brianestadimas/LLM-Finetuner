@@ -66,11 +66,10 @@ def finetune_route():
     gpu_types = [
         # "NVIDIA GeForce RTX 3070",
         # "NVIDIA GeForce RTX 3080",
-        # 
-        "NVIDIA A40",
-        "NVIDIA GeForce RTX 3090",
+        ("NVIDIA GeForce RTX 3090", "COMMUNITY"),
+        ("NVIDIA A40", "ALL"),
     ]
-
+    
     podcast_id = None
     last_error = None
     
@@ -78,7 +77,7 @@ def finetune_route():
         runpod.api_key = runpod_api_key
 
     # Attempt pod creation with fallback GPUs
-    for gpu in gpu_types:
+    for gpu, cloud_type in gpu_types:
         try:
             if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini"]:
                 container_size = 20
@@ -90,6 +89,7 @@ def finetune_route():
                 name=f"FT-Run-{run_id}",
                 image_name="brianarfeto/finetune-vlm:latest",
                 gpu_type_id=gpu,
+                cloud_type=cloud_type,
                 gpu_count=1,
                 volume_in_gb=10,
                 container_disk_in_gb=container_size,
@@ -140,7 +140,17 @@ def finished_finetuning():
     """
     params = request.args
     podcast_id = params.get('podcast_id')
-    is_llm = params.get('is_llm', False)
+    is_llm_str = request.args.get('is_llm', False)
+
+    if is_llm_str is not None:
+        if is_llm_str.lower() in ['true', '1', 'yes']:
+            is_llm = True
+        elif is_llm_str.lower() in ['false', '0', 'no']:
+            is_llm = False
+        else:
+            return jsonify({"error": "Invalid value for is_llm. Use true or false."}), 400
+    else:
+        is_llm = False
 
     if not podcast_id:
         return jsonify({"error": "Podcast ID is required"}), 400

@@ -50,7 +50,8 @@ class FinetuneLM:
         # 2. Wrap the model with LoRA (text-only)
         self.model = FastLanguageModel.get_peft_model(
             self.base_model,
-            target_modules=["q_proj", "k_proj", "v_proj", "up_proj", "down_proj", "o_proj", "gate_proj"],
+            # target_modules=["q_proj", "k_proj", "v_proj", "up_proj", "down_proj", "o_proj", "gate_proj"],
+            target_modules=["q_proj", "v_proj"],
             r=peft_r,
             lora_alpha=peft_alpha,
             lora_dropout=peft_dropout,
@@ -78,6 +79,7 @@ class FinetuneLM:
     #             formatted_text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
         
     #     return {"text": formatted_text}
+
     def format_data(self, row):
         user_prompt = row["input"]
         assistant_answer = row["output"]

@@ -2,6 +2,7 @@ import os
 import torch
 from unsloth import FastLanguageModel
 from PIL import Image
+from unsloth.chat_templates import get_chat_template
 
 # Globals for holding the loaded model and processor
 MODEL = None
@@ -38,6 +39,8 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         load_in_4bit = False,
     )
     print("Base model loaded.")
+    tokenizer.eos_token = "<|im_end|>"
+    tokenizer.special_tokens_map["eos_token"] = "<|im_end|>"
 
     # 2. Find highest checkpoint
 
@@ -69,11 +72,6 @@ def format_data(tokenizer, user_input):
         f"<|im_start|>user\n{user_input}<|im_end|>\n"
         f"<|im_start|>assistant\n"
     )
-    formatted_text = (
-            f"<|im_start|>system\nYou are a helpful customer service assistant.<|im_end|>\n"
-            f"<|im_start|>user\n{user_input}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
     return formatted_text
 
 
@@ -89,18 +87,21 @@ def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int 
         return_tensors="pt",
         add_special_tokens=False,
     ).to("cuda")
+    
 
     # 5. Generate response
     outputs = model.generate(
         **inputs,
         max_new_tokens=max_tokens,
         temperature=temperature,
-        pad_token_id=tokenizer.eos_token_id,
+        # pad_token_id=tokenizer.eos_token_id,
         do_sample=False,
+        repetition_penalty=1.2,
+        use_cache=True 
     )
     generated_text = tokenizer.decode(
         outputs[0][inputs["input_ids"].shape[1]:], 
         skip_special_tokens=True
     )
     
-    return generated_text.strip()
+    return generated_text
