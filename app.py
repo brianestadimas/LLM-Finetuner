@@ -66,7 +66,7 @@ def finetune_route():
     gpu_types = [
         # "NVIDIA GeForce RTX 3070",
         # "NVIDIA GeForce RTX 3080",
-        ("NVIDIA GeForce RTX 3090", "COMMUNITY"),
+        # ("NVIDIA GeForce RTX 3090", "COMMUNITY"),
         ("NVIDIA A40", "ALL"),
     ]
     
