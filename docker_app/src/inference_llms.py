@@ -87,6 +87,7 @@ def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int 
         return_tensors="pt",
         add_special_tokens=False,
     )
+    inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
     # 5. Generate response
     outputs = model.generate(

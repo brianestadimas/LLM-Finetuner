@@ -3,7 +3,7 @@ from inference_llms import run_inference_lm
 import pandas as pd
 
 # Load first 100 sample data from train.csv
-train_data = pd.read_csv('train.csv')
+train_data = pd.read_csv('train.csv').head(10)
 
 # Format the data into an array of dictionaries with 'input' and 'output' keys
 sample_data = [{'input': row['input'], 'output': row['output']} for index, row in train_data.iterrows()]
