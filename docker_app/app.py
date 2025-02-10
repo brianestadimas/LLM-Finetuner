@@ -5,6 +5,7 @@ from flask import Flask, Response, jsonify, request, send_file
 import requests
 import torch
 from src.phi3v import FinetunePhi3V
+from src.blip2 import FinetuneBLIP2
 from src.qwenvl import FinetuneQwenVL
 from src.llms import FinetuneLM, olive_opt
 from flask_cors import CORS
@@ -19,6 +20,7 @@ from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl
 from src.inference_llms import run_inference_lm
+from src.inference_blip2 import run_inference_blip2
 
 app = Flask(__name__)
 CORS(app)
@@ -69,7 +71,8 @@ MODEL_HF_URL = {
     "Pixtral": "unsloth/Pixtral-12B-2409-bnb-4bit",
     "Llava1.6-Mistral": "unsloth/llava-v1.6-mistral-7b-hf",
     "Llava1.5": "unsloth/llava-v1.6-mistral-7b-hf",
-    "Llama3.2V": "unsloth/Llama-3.2-11B-Vision-bnb-4bit"
+    "Llama3.2V": "unsloth/Llama-3.2-11B-Vision-bnb-4bit",
+    "BLIP2": "Salesforce/blip2-opt-2.7b"
 }
 
 MODEL_HF_URL_LLM = {
@@ -210,6 +213,19 @@ def run_model():
                         peft_alpha=params["peft_alpha"],
                         peft_dropout=params["peft_dropout"],
                     )
+                elif model_type in ["BLIP2"]:
+                    finetuner = FinetuneBLIP2(
+                        data=data,
+                        epochs=params["epochs"],
+                        learning_rate=params["learning_rate"],
+                        warmup_ratio=params["warmup_ratio"],
+                        gradient_accumulation_steps=params["gradient_accumulation_steps"],
+                        optim=params["optim"],
+                        model_id=params["model_type"],
+                        peft_r=params["peft_r"],
+                        peft_alpha=params["peft_alpha"],
+                        peft_dropout=params["peft_dropout"],
+                    )
                 else:
                     finetuner = FinetuneQwenVL(
                         data=data,
@@ -288,8 +304,6 @@ def run_model_llm():
             return jsonify({"error": "No metadata provided."}), 400
 
         data_entries = metadata.get("data", [])
-        if not isinstance(data_entries, list) or not data_entries:
-            return jsonify({"error": "Invalid or empty 'data' provided in metadata."}), 400
 
         reconstructed_data = []
         for idx, entry in enumerate(data_entries):
@@ -481,6 +495,8 @@ def inference():
 
         if model_type in ["Phi3V", "Phi3.5V"]:
             result = run_inference_phi3v(image, user_input, temperature, max_tokens, model_id)
+        elif model_type in ["BLIP2"]:
+            result = run_inference_blip2(image, user_input, temperature, max_tokens, model_id)
         else:
             result = run_inference_qwenvl(image, user_input, temperature, max_tokens, model_id)
 
@@ -517,6 +533,8 @@ def inference_b64():
         model_id = MODEL_HF_URL[model_type]
         if model_type in ["Phi3V", "Phi3.5V"]:
             result = run_inference_phi3v(image, user_input, temperature, max_tokens, model_id)
+        elif model_type in ["BLIP2"]:
+            result = run_inference_blip2(image, user_input, temperature, max_tokens, model_id)
         else:
             result = run_inference_qwenvl(image, user_input, temperature, max_tokens, model_id)
         return jsonify({"result": result}), 200
