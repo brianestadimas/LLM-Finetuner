@@ -87,9 +87,7 @@ class FinetuneLM:
 
 
     def run(self):
-        if "gemma" in self.model_id.lower():
-            template_name = "gemma"
-        elif "mistral" in self.model_id.lower():
+        if "mistral" in self.model_id.lower():
             template_name = "mistral"
         elif "llama" in self.model_id.lower():
             template_name = "llama-3.1"

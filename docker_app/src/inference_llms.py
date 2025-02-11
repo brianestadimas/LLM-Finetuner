@@ -53,9 +53,7 @@ def format_data_inference(tokenizer, user_input, model_id: str) -> str:
     template_name = None
     model_id_lower = model_id.lower()
 
-    if "gemma" in model_id_lower:
-        template_name = "gemma"
-    elif "mistral" in model_id_lower:
+    if "mistral" in model_id_lower:
         template_name = "mistral"
     elif "llama" in model_id_lower:
         template_name = "llama"
