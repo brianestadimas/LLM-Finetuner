@@ -80,11 +80,11 @@ def finetune_route():
     for gpu, cloud_type in gpu_types:
         try:
             if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini"]:
-                container_size = 20
+                container_size = 30
             elif model_type in ["DeepSeek-R1-Distill-32B", "DeepSeek-R1-Llama-8B"]:
                 container_size = 60
             else:
-                container_size = 36
+                container_size = 44
             pod = runpod.create_pod(
                 name=f"FT-Run-{run_id}",
                 image_name="brianarfeto/finetune-vlm:latest",
