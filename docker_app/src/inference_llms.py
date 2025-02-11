@@ -30,24 +30,31 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
     if MODEL is not None and TOKENIZER is not None:
         return MODEL, TOKENIZER
 
-    adapter_path = find_highest_checkpoint(checkpoint_root)
-    print(f"Highest checkpoint found: {adapter_path}")
-    
-    print("Loading base model...")
+    # Check if local fine-tuned model is present and non-empty
+    try:
+        adapter_path = find_highest_checkpoint(checkpoint_root)
+        print(f"Highest checkpoint found: {adapter_path}")
+        model_name = adapter_path
+    except ValueError:
+        # 2. If not found, check for a 'saved' folder
+        saved_folder = os.path.join(checkpoint_root, "saved")
+        if os.path.isdir(saved_folder) and os.listdir(saved_folder):
+            model_name = saved_folder
+        else:
+            model_name = model_id
+
+    print(f"Loading model from: {model_name}")
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name =  adapter_path,  # Trained model either locally or from huggingface
-        load_in_4bit = False,
+        model_name=model_name,
+        load_in_4bit=False,
     )
-    print("Base model loaded.")
+    
     tokenizer.eos_token = "<|im_end|>"
     tokenizer.special_tokens_map["eos_token"] = "<|im_end|>"
-
-    # 2. Find highest checkpoint
-
     MODEL = model
     TOKENIZER = tokenizer
-
     return MODEL, TOKENIZER
+
 
 def format_data_inference(tokenizer, user_input, model_id: str) -> str:
     template_name = None
@@ -84,7 +91,6 @@ def format_data_inference(tokenizer, user_input, model_id: str) -> str:
 
 
 def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int = 1000, model_id: str = "unsloth/Phi-3.5-mini-instruct") -> str:
-
     model, tokenizer = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
     prompt = format_data_inference(tokenizer, user_input, model_id) 

@@ -87,6 +87,14 @@ class FinetuneLM:
 
 
     def run(self):
+        if not self.data:  # Check if data is empty
+            print("Dataset is empty. Skipping training and deploying base model.")
+            save_path = "./model_cp/saved"
+            self.base_model.save_pretrained(save_path)
+            self.tokenizer.save_pretrained(save_path)
+            print("Base model has been saved without fine-tuning.")
+            return
+
         if "mistral" in self.model_id.lower():
             template_name = "mistral"
         elif "llama" in self.model_id.lower():
