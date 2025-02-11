@@ -87,18 +87,25 @@ class FinetuneLM:
 
 
     def run(self):
-        if any(
-            kw in self.model_id.lower()
-            for kw in ["llama", "mistral", "gemma"]
-        ):
+        if "gemma" in self.model_id.lower():
+            template_name = "gemma"
+        elif "mistral" in self.model_id.lower():
+            template_name = "mistral"
+        elif "llama" in self.model_id.lower():
+            template_name = "llama-3.1"
+        else:
+            template_name = None
+
+        if template_name is not None:
             tokn = get_chat_template(
-                    self.tokenizer,
-                    chat_template = "chatml",
-                    mapping = {"role" : "from", "content" : "value", "user" : "human", "assistant" : "gpt"}, 
-                    map_eos_token = True,
-                )
+                self.tokenizer,
+                chat_template=template_name,
+                mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
+                map_eos_token=True,
+            )
             formatted_data = [self.format_data_chatml(row, tokn) for row in self.data]
         else:
+            # Otherwise, default to your simpler Qwen/Phi style
             formatted_data = [self.format_data(row) for row in self.data]
 
         dataset = Dataset.from_list(formatted_data)

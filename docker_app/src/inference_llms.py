@@ -49,45 +49,34 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
 
     return MODEL, TOKENIZER
 
-# def format_data(tokenizer, user_input):
-#     messages = [
-#         {"role": "user", "content": user_input},
-#     ]
-#     try:
-#         formatted_text = tokenizer.apply_chat_template(
-#             messages,
-#             tokenize=False,
-#             add_generation_prompt=False,
-#         )
-#     except Exception as e:
-#         formatted_text = f"<|im_start|>user\n{user_input}<|im_end|>\n<|im_start|>"
-    
-#     return formatted_text
-
 def format_data_inference(tokenizer, user_input, model_id: str) -> str:
-    if any(kw in model_id.lower() for kw in ["llama", "mistral", "gemma"]):
-        row_json = [
-            {"role": "user", "content": user_input}
-        ]
-        # We'll try to create the same chat_template that we used in training
+    template_name = None
+    model_id_lower = model_id.lower()
+
+    if "gemma" in model_id_lower:
+        template_name = "gemma"
+    elif "mistral" in model_id_lower:
+        template_name = "mistral"
+    elif "llama" in model_id_lower:
+        template_name = "llama"
+
+    if template_name:
+        row_json = [{"role": "user", "content": user_input}]
         tokn = get_chat_template(
             tokenizer,
-            chat_template="chatml",
+            chat_template=template_name,
             mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
             map_eos_token=True,
         )
         try:
-            # This only has a user role. The assistant answer will be generated
             formatted_text = tokn.apply_chat_template(
                 row_json,
                 tokenize=False,
-                add_generation_prompt=False  # or True, depending on your preference
+                add_generation_prompt=False
             )
         except Exception:
-            # Fallback to a simple instruction style
             formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
     else:
-        # Default = Qwen/Phi style
         formatted_text = (
             f"<|im_start|>user\n{user_input}<|im_end|>\n"
             f"<|im_start|>assistant\n"
