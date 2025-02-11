@@ -56,7 +56,7 @@ def format_data_inference(tokenizer, user_input, model_id: str) -> str:
     if "mistral" in model_id_lower:
         template_name = "mistral"
     elif "llama" in model_id_lower:
-        template_name = "llama"
+        template_name = "llama-3"
 
     if template_name:
         row_json = [{"role": "user", "content": user_input}]

@@ -90,7 +90,7 @@ class FinetuneLM:
         if "mistral" in self.model_id.lower():
             template_name = "mistral"
         elif "llama" in self.model_id.lower():
-            template_name = "llama-3.1"
+            template_name = "llama-3"
         else:
             template_name = None
 
