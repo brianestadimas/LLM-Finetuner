@@ -60,38 +60,47 @@ class FinetuneLM:
             loftq_config=None
         )
 
-    # def format_data(self, row):
-    #     user_prompt = row["input"]
-    #     assistant_answer = row["output"]
-    #     messages = [
-    #         {"role": "user", "content": user_prompt},
-    #         {"role": "assistant", "content": assistant_answer},
-    #     ]
-    #     try:
-    #         formatted_text = self.tokenizer.apply_chat_template(
-    #             messages,
-    #             tokenize=False,
-    #         )
-    #         print(f"Formatted text: {formatted_text}")
-    #     except Exception as e:
-    #         formatted_text = ""
-    #         for msg in messages:
-    #             formatted_text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-        
-    #     return {"text": formatted_text}
-
     def format_data(self, row):
         user_prompt = row["input"]
         assistant_answer = row["output"]
-        formatted_text = f"<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n{assistant_answer}<|im_end|>"
+        formatted_text = (
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n{assistant_answer}<|im_end|>"
+        )
+        return {"text": formatted_text}
+    
+    def format_data_chatml(self, row, tokn):
+        user_prompt = row["input"]
+        assistant_answer = row["output"]
+        row_json = [
+            {"role": "user", "content": f"{row['input']}"},
+            {"role": "assistant", "content": row["output"]}
+        ]
+        try:
+            formatted_text = tokn.apply_chat_template(row_json, tokenize=False, add_generation_prompt = False)
+        except Exception as e:
+            formatted_text = (
+                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+                f"<|im_start|>assistant\n{assistant_answer}<|im_end|>"
+            )
         return {"text": formatted_text}
 
+
     def run(self):
-        """
-        Execute LoRA fine-tuning on the provided text data.
-        """
-        # Convert data to the specified format
-        formatted_data = [self.format_data(row) for row in self.data]
+        if any(
+            kw in self.model_id.lower()
+            for kw in ["llama", "mistral", "gemma"]
+        ):
+            tokn = get_chat_template(
+                    self.tokenizer,
+                    chat_template = "chatml",
+                    mapping = {"role" : "from", "content" : "value", "user" : "human", "assistant" : "gpt"}, 
+                    map_eos_token = True,
+                )
+            formatted_data = [self.format_data_chatml(row, tokn) for row in self.data]
+        else:
+            formatted_data = [self.format_data(row) for row in self.data]
+
         dataset = Dataset.from_list(formatted_data)
 
         # Create SFT config

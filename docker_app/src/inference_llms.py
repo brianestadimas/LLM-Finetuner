@@ -64,14 +64,35 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
     
 #     return formatted_text
 
-def format_data(tokenizer, user_input):
-    """
-    Formats the user input into the Qwen chat template format.
-    """
-    formatted_text = (
-        f"<|im_start|>user\n{user_input}<|im_end|>\n"
-        f"<|im_start|>assistant\n"
-    )
+def format_data_inference(tokenizer, user_input, model_id: str) -> str:
+    if any(kw in model_id.lower() for kw in ["llama", "mistral", "gemma"]):
+        row_json = [
+            {"role": "user", "content": user_input}
+        ]
+        # We'll try to create the same chat_template that we used in training
+        tokn = get_chat_template(
+            tokenizer,
+            chat_template="chatml",
+            mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
+            map_eos_token=True,
+        )
+        try:
+            # This only has a user role. The assistant answer will be generated
+            formatted_text = tokn.apply_chat_template(
+                row_json,
+                tokenize=False,
+                add_generation_prompt=False  # or True, depending on your preference
+            )
+        except Exception:
+            # Fallback to a simple instruction style
+            formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
+    else:
+        # Default = Qwen/Phi style
+        formatted_text = (
+            f"<|im_start|>user\n{user_input}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
     return formatted_text
 
 
@@ -79,7 +100,7 @@ def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int 
 
     model, tokenizer = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
-    prompt = format_data(tokenizer, user_input) 
+    prompt = format_data_inference(tokenizer, user_input, model_id) 
 
     # 4. Tokenize inputs
     inputs = tokenizer(
