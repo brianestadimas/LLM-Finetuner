@@ -8,7 +8,7 @@ train_data = pd.read_csv('train.csv').head(700)
 # Format the data into an array of dictionaries with 'input' and 'output' keys
 sample_data = [{'input': row['input'], 'output': row['output']} for index, row in train_data.iterrows()]
 
-model_id = "unsloth/Meta-Llama-3.1-8B"
+model_id = "unsloth/Meta-Llama-3.1-8B-Instruct"
 finetuner = FinetuneLM(data=sample_data, epochs=1, learning_rate=5e-6, model_id=model_id, peft_alpha=16, \
         peft_r=16, peft_dropout=0.0, gradient_accumulation_steps=8, warmup_ratio=0.1)
 finetuner.run()
