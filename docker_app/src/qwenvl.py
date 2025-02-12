@@ -96,9 +96,12 @@ class FinetuneQwenVL:
         }
 
     def run(self):
-        """
-        Executes the fine-tuning process.
-        """
+        if not self.data:  # Check if data is empty
+            print("Dataset is empty. Skipping training and deploying base model...")
+            self.base_model
+            print("Base model has been saved without fine-tuning.")
+            return
+
         converted_dataset = [self.format_data(row) for row in self.data]
         training_args = SFTConfig(
             learning_rate=self.learning_rate,

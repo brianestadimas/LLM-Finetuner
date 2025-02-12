@@ -29,12 +29,16 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
     if MODEL is not None and TOKENIZER is not None:
         return MODEL, TOKENIZER
 
-    adapter_path = find_highest_checkpoint(checkpoint_root)
-    print(f"Highest checkpoint found: {adapter_path}")
+    try:
+        adapter_path = find_highest_checkpoint(checkpoint_root)
+        print(f"Highest checkpoint found: {adapter_path}")
+        model_name = adapter_path
+    except:
+        model_name = model_id
     
     print("Loading base model...")
     model, tokenizer = FastVisionModel.from_pretrained(
-        model_name =  adapter_path,  # Trained model either locally or from huggingface
+        model_name =  model_name,  # Trained model either locally or from huggingface
         load_in_4bit = False,
     )
     print("Base model loaded.")

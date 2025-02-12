@@ -182,10 +182,12 @@ class FinetunePhi3V:
         self.data = data  # Store the data
 
     def run(self):
-        """
-        Executes the fine-tuning process.
-        """
-        # Initialize the dataset with the provided data
+        if not self.data:  # Check if data is empty
+            print("Dataset is empty. Skipping training and deploying base model...")
+            self.base_model
+            print("Base model has been saved without fine-tuning.")
+            return
+
         dataset = ImageTextDataset(
             data=self.data,
             tokenizer=self.tokenizer,
