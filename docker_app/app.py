@@ -20,7 +20,6 @@ from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl
 from src.inference_llms import run_inference_lm
-from src.inference_blip2 import run_inference_blip2
 
 app = Flask(__name__)
 CORS(app)
@@ -493,10 +492,8 @@ def inference():
         image = Image.open(file.stream).convert("RGB")
         model_id = MODEL_HF_URL[model_type]
 
-        if model_type in ["Phi3V", "Phi3.5V"]:
+        if model_type in ["Phi3V", "Phi3.5V", "BLIP2"]:
             result = run_inference_phi3v(image, user_input, temperature, max_tokens, model_id)
-        elif model_type in ["BLIP2"]:
-            result = run_inference_blip2(image, user_input, temperature, max_tokens, model_id)
         else:
             result = run_inference_qwenvl(image, user_input, temperature, max_tokens, model_id)
 
@@ -531,10 +528,8 @@ def inference_b64():
         image_data = base64.b64decode(image_b64)
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
         model_id = MODEL_HF_URL[model_type]
-        if model_type in ["Phi3V", "Phi3.5V"]:
+        if model_type in ["Phi3V", "Phi3.5V", "BLIP2"]:
             result = run_inference_phi3v(image, user_input, temperature, max_tokens, model_id)
-        elif model_type in ["BLIP2"]:
-            result = run_inference_blip2(image, user_input, temperature, max_tokens, model_id)
         else:
             result = run_inference_qwenvl(image, user_input, temperature, max_tokens, model_id)
         return jsonify({"result": result}), 200

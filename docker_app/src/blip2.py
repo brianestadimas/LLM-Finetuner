@@ -157,7 +157,12 @@ class FinetuneBLIP2:
         self.data = data
 
     def run(self):
-        # Create the dataset using the BLIP2 formatter
+        if not self.data:  # Check if data is empty
+            print("Dataset is empty. Skipping training and deploying base model...")
+            self.base_model
+            print("Base model has been saved without fine-tuning.")
+            return
+
         dataset = ImageTextDataset(
             data=self.data,
             tokenizer=self.tokenizer,

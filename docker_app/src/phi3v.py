@@ -24,15 +24,6 @@ class CustomLoggingCallback(TrainerCallback):
 
 class ImageTextDataset(Dataset):
     def __init__(self, data, tokenizer, formatter):
-        """
-        Initializes the dataset with data, tokenizer, and formatter.
-
-        Args:
-            data (list of dict): List containing data points with 'image', 'input', and 'output'.
-            tokenizer: Tokenizer instance from HuggingFace transformers.
-            formatter (str): String formatter with placeholders matching keys in data dictionaries.
-                             Example: "<|user|>\n<|image_1|>{prompt}<|end|><|assistant|>{answer}<|end|>"
-        """
         self.data = data
         self.tokenizer = tokenizer
         self.tokenizer.padding_side = 'left'
@@ -51,15 +42,6 @@ class ImageTextDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        """
-        Retrieves the data point at the specified index.
-
-        Args:
-            idx (int): Index of the data point.
-
-        Returns:
-            dict: Dictionary containing tokenized inputs, pixel values, and labels as tensors.
-        """
         row = self.data[idx]
         image_path = row['image']
         input_text = row['input']
@@ -73,9 +55,6 @@ class ImageTextDataset(Dataset):
 
         image = self.image_transform(image)
 
-        # Prepare the data dict for formatting
-        # Map 'input' and 'output' to the placeholders used in the formatter
-        # Assuming 'input' corresponds to 'prompt' and 'output' to 'answer'
         data_dict = {}
         for placeholder in self.placeholders:
             if placeholder == 'prompt':
@@ -126,20 +105,6 @@ class FinetunePhi3V:
                  peft_dropout=0.05,
                  formatter="<|user|>\n<|image_1|>{prompt}<|end|><|assistant|>{answer}<|end|>"
                 ):
-        """
-        Args:
-            data (list of dict): List containing data points with 'image', 'input', and 'output'.
-            epochs (int): Number of training epochs.
-            learning_rate (float): Learning rate for the optimizer.
-            warmup_ratio (float): Ratio of warmup steps.
-            gradient_accumulation_steps (int): Number of steps to accumulate gradients.
-            optim (str): Optimizer type.
-            model_id (str): HuggingFace model identifier.
-            peft_r (int): LoRA rank.
-            peft_alpha (int): LoRA alpha.
-            peft_dropout (float): LoRA dropout.
-            formatter (str): String formatter for combining text and image.
-        """
         self.epochs = epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.bnb_config = BitsAndBytesConfig(
@@ -158,14 +123,6 @@ class FinetunePhi3V:
             quantization_config=self.bnb_config,
             device_map="auto"
         )
-        # self.peft_config = LoraConfig(
-        #     task_type=TaskType.CAUSAL_LM,
-        #     r=peft_r,
-        #     lora_alpha=peft_alpha,
-        #     lora_dropout=peft_dropout,
-        #     # target_modules=["q_proj", "v_proj"]
-        #     target_modules=['k_proj','q_proj','v_proj','o_proj','gate_proj','down_proj','up_proj']
-        # )
         self.peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM, 
             r=peft_r, 
@@ -195,9 +152,6 @@ class FinetunePhi3V:
         )
 
         model = get_peft_model(self.base_model, self.peft_config)
-        # for param in model.parameters():
-        #     if param.dtype in [torch.float16, torch.float32, torch.bfloat16, torch.complex64, torch.complex128]:
-        #         param.requires_grad = True
 
         training_args = TrainingArguments(
             learning_rate=self.learning_rate,

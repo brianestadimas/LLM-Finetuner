@@ -79,7 +79,7 @@ from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from transformers.models.qwen2_vl.modeling_qwen2_vl import (F, math, List, Optional, Tuple, Union, torch, nn, LayerNorm, ACT2FN, Cache, StaticCache, GenerationMixin, AttentionMaskConverter, ROPE_INIT_FUNCTIONS, PreTrainedModel, add_start_docstrings, add_start_docstrings_to_model_forward, is_flash_attn_greater_or_equal_2_10, replace_return_docstrings, Qwen2VLConfig, flash_attn_varlen_func, logger, __name__, _CONFIG_FOR_DOC, Qwen2VLCausalLMOutputWithPast, Qwen2VLModel, Qwen2VLPreTrainedModel, Qwen2VisionTransformerPretrainedModel, QWEN2_VL_INPUTS_DOCSTRING)
+from transformers.models.qwen2_vl.modeling_qwen2_vl import (F, math, List, Optional, Tuple, Union, torch, nn, LayerNorm, ACT2FN, Cache, StaticCache, GenerationMixin, AttentionMaskConverter, ROPE_INIT_FUNCTIONS, PreTrainedModel, add_start_docstrings, add_start_docstrings_to_model_forward, is_flash_attn_greater_or_equal_2_10, replace_return_docstrings, Qwen2VLConfig, flash_attn_varlen_func, _flash_attention_forward, logger, __name__, _CONFIG_FOR_DOC, Qwen2VLCausalLMOutputWithPast, Qwen2VLModel, Qwen2VLPreTrainedModel, Qwen2VisionTransformerPretrainedModel, QWEN2_VL_INPUTS_DOCSTRING)
 
 @torch.compile(fullgraph = True, dynamic = True, options = torch_compile_options)
 @torch.no_grad()
@@ -435,12 +435,14 @@ class Qwen2RMSNorm(nn.Module):
 
 
 @torch.compile(fullgraph = False, dynamic = True, options = torch_compile_options)
-def Qwen2MLP_forward(self, hidden_state):
-    return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))
+def Qwen2MLP_forward(self, x):
+    down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+    return down_proj
 
 class Qwen2MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
@@ -448,8 +450,8 @@ class Qwen2MLP(nn.Module):
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
 
-    def forward(self, hidden_state):
-        return Qwen2MLP_forward(self, hidden_state)
+    def forward(self, x):
+        return Qwen2MLP_forward(self, x)
 
 
 @torch.compile(fullgraph = True, dynamic = True, options = torch_compile_options)
@@ -475,7 +477,7 @@ def Qwen2VLAttention_forward(
     output_attentions: bool = False,
     use_cache: bool = False,
     cache_position: Optional[torch.LongTensor] = None,
-    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     bsz, q_len, _ = hidden_states.size()
 
@@ -483,20 +485,11 @@ def Qwen2VLAttention_forward(
     key_states = self.k_proj(hidden_states)
     value_states = self.v_proj(hidden_states)
 
-    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+    query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
-    if position_embeddings is None:
-        logger.warning_once(
-            "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-            "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-            "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
-            "removed and `position_embeddings` will be mandatory."
-        )
-        cos, sin = self.rotary_emb(value_states, position_ids)
-    else:
-        cos, sin = position_embeddings
+    cos, sin = position_embeddings
     query_states, key_states = apply_multimodal_rotary_pos_emb(
         query_states, key_states, cos, sin, self.rope_scaling["mrope_section"]
     )
@@ -594,7 +587,7 @@ class Qwen2VLAttention(nn.Module):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         return Qwen2VLAttention_forward(self, hidden_states, attention_mask, position_ids, past_key_value, output_attentions, use_cache, cache_position, position_embeddings)
 
@@ -609,7 +602,7 @@ def Qwen2VLFlashAttention2_forward(
     output_attentions: bool = False,
     use_cache: bool = False,
     cache_position: Optional[torch.LongTensor] = None,
-    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
 ):
     bsz, q_len, _ = hidden_states.size()
 
@@ -617,22 +610,12 @@ def Qwen2VLFlashAttention2_forward(
     key_states = self.k_proj(hidden_states)
     value_states = self.v_proj(hidden_states)
 
-    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+    query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
     # Because the input can be padded, the absolute sequence length depends on the max position id.
-    if position_embeddings is None:
-        logger.warning_once(
-            "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-            "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-            "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
-            "removed and `position_embeddings` will be mandatory."
-        )
-        cos, sin = self.rotary_emb(value_states, position_ids)
-    else:
-        cos, sin = position_embeddings
-
+    cos, sin = position_embeddings
     query_states, key_states = apply_multimodal_rotary_pos_emb(
         query_states, key_states, cos, sin, self.rope_scaling["mrope_section"]
     )
@@ -729,7 +712,7 @@ class Qwen2VLFlashAttention2(Qwen2VLAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
     ):
         return Qwen2VLFlashAttention2_forward(self, hidden_states, attention_mask, position_ids, past_key_value, output_attentions, use_cache, cache_position, position_embeddings)
 
@@ -744,7 +727,7 @@ def Qwen2VLSdpaAttention_forward(
     output_attentions: bool = False,
     use_cache: bool = False,
     cache_position: Optional[torch.LongTensor] = None,
-    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
     if output_attentions: raise RuntimeError('Unsloth: Not supported')
 
@@ -754,20 +737,11 @@ def Qwen2VLSdpaAttention_forward(
     key_states = self.k_proj(hidden_states)
     value_states = self.v_proj(hidden_states)
 
-    query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-    key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+    query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
-    if position_embeddings is None:
-        logger.warning_once(
-            "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-            "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-            "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
-            "removed and `position_embeddings` will be mandatory."
-        )
-        cos, sin = self.rotary_emb(value_states, position_ids)
-    else:
-        cos, sin = position_embeddings
+    cos, sin = position_embeddings
     query_states, key_states = apply_multimodal_rotary_pos_emb(
         query_states, key_states, cos, sin, self.rope_scaling["mrope_section"]
     )
@@ -824,7 +798,7 @@ class Qwen2VLSdpaAttention(Qwen2VLAttention):
         output_attentions: bool = False,
         use_cache: bool = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         return Qwen2VLSdpaAttention_forward(self, hidden_states, attention_mask, position_ids, past_key_value, output_attentions, use_cache, cache_position, position_embeddings)
 
@@ -939,7 +913,7 @@ def Qwen2VLForConditionalGeneration_forward(
             attention_mask = attention_mask.to(inputs_embeds.device)
 
     # if we get 4D attention mask we cannot calculate rope deltas anymore. TODO @raushan fixme
-    if position_ids is None and input_ids is not None and (attention_mask is None or attention_mask.ndim == 2):
+    if position_ids is None and (attention_mask is None or attention_mask.ndim == 2):
         # calculate RoPE index once per generation in the pre-fill stage only
         if (cache_position is not None and cache_position[0] == 0) or self.rope_deltas is None:
             position_ids, rope_deltas = self.get_rope_index(
@@ -1035,7 +1009,7 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMixin):
 
     def get_rope_index(
         self,
-        input_ids: torch.LongTensor,
+        input_ids: Optional[torch.LongTensor] = None,
         image_grid_thw: Optional[torch.LongTensor] = None,
         video_grid_thw: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -1165,7 +1139,7 @@ class Qwen2VLForConditionalGeneration(Qwen2VLPreTrainedModel, GenerationMixin):
             if attention_mask is not None:
                 position_ids = attention_mask.long().cumsum(-1) - 1
                 position_ids.masked_fill_(attention_mask == 0, 1)
-                position_ids = position_ids.unsqueeze(0).expand(3, -1, -1).to(input_ids.device)
+                position_ids = position_ids.unsqueeze(0).expand(3, -1, -1).to(attention_mask.device)
                 max_position_ids = position_ids.max(0, keepdim=False)[0].max(-1, keepdim=True)[0]
                 mrope_position_deltas = max_position_ids + 1 - attention_mask.shape[-1]
             else:

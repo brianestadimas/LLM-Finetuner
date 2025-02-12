@@ -31,12 +31,6 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         return MODEL, PROCESSOR
 
     print("Loading base model...")
-    # bnb_config = BitsAndBytesConfig(
-    #     load_in_8bit=True,  # Enable 8-bit loading
-    #     bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
-    #     bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
-    #     device_map="cuda"  # Automatically place on available GPUs
-    # )
     
     base_model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -46,23 +40,17 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         torch_dtype="auto",
         _attn_implementation='eager'
     )
-    print("Base model loaded.")
-
     # 2. Find highest checkpoint
-    adapter_path = find_highest_checkpoint(checkpoint_root)
-    print(f"Highest checkpoint found: {adapter_path}")
+    try:
+        adapter_path = find_highest_checkpoint(checkpoint_root)
+        model = PeftModel.from_pretrained(base_model, adapter_path)
+    except:
+        model = base_model
+    
+    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
 
-    # 3. Load LoRA adapter on top of base model
-    lora_model = PeftModel.from_pretrained(base_model, adapter_path)
-    print("LoRA adapter loaded.")
-
-    # 4. Processor
-    local_processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-    print("Processor loaded.")
-
-    # Cache in global variables
-    MODEL = lora_model
-    PROCESSOR = local_processor
+    MODEL = model
+    PROCESSOR = processor
 
     return MODEL, PROCESSOR
 
