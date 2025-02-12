@@ -37,11 +37,11 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         model_name = adapter_path
     except ValueError:
         # 2. If not found, check for a 'saved' folder
-        saved_folder = os.path.join(checkpoint_root, "saved")
-        if os.path.isdir(saved_folder) and os.listdir(saved_folder):
-            model_name = saved_folder
-        else:
-            model_name = model_id
+        # saved_folder = os.path.join(checkpoint_root, "saved")
+        # if os.path.isdir(saved_folder) and os.listdir(saved_folder):
+        #     model_name = saved_folder
+        # else:
+        model_name = model_id
 
     print(f"Loading model from: {model_name}")
     model, tokenizer = FastLanguageModel.from_pretrained(
