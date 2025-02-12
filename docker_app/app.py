@@ -143,10 +143,8 @@ def run_model():
             return jsonify({"error": f"Could not parse JSON metadata: {e}"}), 400
 
         data_entries = metadata.get("data", [])
-        if not isinstance(data_entries, list) or not data_entries:
-            return jsonify({"error": "Invalid or empty 'data' provided in metadata."}), 400
-
         uploaded_files = request.files.getlist('files')
+
         if len(uploaded_files) != len(data_entries):
             return jsonify({
                 "error": "Number of uploaded files does not match number of data entries."
