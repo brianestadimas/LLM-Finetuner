@@ -27,7 +27,7 @@ for elem in sample_data:
         # Format the data into an array of dictionaries with 'input' and 'output' keys
         user_input = elem["input"] # take input from train _data in i
         
-        model_id = "unsloth/Llama-3.2-3B-Instruct"
+        model_id = "unsloth/DeepSeek-R1-Distill-Qwen-7B"
 
         # Generate a response
         response = inference_llm(user_input=user_input, temperature=1.0, max_tokens=1000, model_id=model_id)

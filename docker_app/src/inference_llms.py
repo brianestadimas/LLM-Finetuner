@@ -35,7 +35,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         adapter_path = find_highest_checkpoint(checkpoint_root)
         print(f"Highest checkpoint found: {adapter_path}")
         model_name = adapter_path
-    except ValueError:
+    except:
         # 2. If not found, check for a 'saved' folder
         # saved_folder = os.path.join(checkpoint_root, "saved")
         # if os.path.isdir(saved_folder) and os.listdir(saved_folder):
@@ -49,8 +49,8 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         load_in_4bit=False,
     )
     
-    tokenizer.eos_token = "<|im_end|>"
-    tokenizer.special_tokens_map["eos_token"] = "<|im_end|>"
+    # tokenizer.eos_token = "<|im_end|>"
+    # tokenizer.special_tokens_map["eos_token"] = "<|im_end|>"
     MODEL = model
     TOKENIZER = tokenizer
     return MODEL, TOKENIZER
@@ -64,6 +64,8 @@ def format_data_inference(tokenizer, user_input, model_id: str) -> str:
         template_name = "mistral"
     elif "llama" in model_id_lower:
         template_name = "llama-3"
+    elif "deepseek" in model_id_lower and "qwen" in model_id_lower:
+        template_name = "chatml"
 
     if template_name:
         row_json = [{"role": "user", "content": user_input}]
@@ -117,5 +119,9 @@ def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int 
         outputs[0][inputs["input_ids"].shape[1]:], 
         skip_special_tokens=True
     )
+    if "llama" in model_id.lower():
+        unwanted_prefix = "assistant\n\n"
+        if generated_text.startswith(unwanted_prefix):
+            generated_text = generated_text[len(unwanted_prefix):].lstrip()
     
     return generated_text
