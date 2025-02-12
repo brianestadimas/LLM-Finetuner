@@ -79,9 +79,9 @@ def finetune_route():
     # Attempt pod creation with fallback GPUs
     for gpu, cloud_type in gpu_types:
         try:
-            if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini"]:
+            if model_type in ["Phi3V", "Phi3.5V", "Qwen2VL", "Qwen2VL-Mini", "SmolLM2-135M", "SmolLM2-360M", "SmolLM2-1.7B"]:
                 container_size = 30
-            elif model_type in ["DeepSeek-R1-Distill-32B", "DeepSeek-R1-Llama-8B"]:
+            elif model_type in ["DeepSeek-R1-Distill-32B", "DeepSeek-R1-Llama-8B", "Phi-4"]:
                 container_size = 60
             else:
                 container_size = 44
