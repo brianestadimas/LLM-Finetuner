@@ -84,6 +84,7 @@ def run_inference_qwenvl(image: Image.Image, user_input: str, temperature: float
         max_new_tokens=max_tokens,
         use_cache=True,
         temperature=temperature,
+        do_sample=False,
         min_p=0.1
     )
     generate_ids = output_ids[:, inputs['input_ids'].shape[1]:]
