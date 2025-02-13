@@ -1,12 +1,13 @@
 import psutil
 import torch
-import os, time
+import os, time, shutil
 from transformers import TrainerCallback
 from trl import SFTTrainer, SFTConfig
 from unsloth import FastLanguageModel, is_bf16_supported
 from unsloth.chat_templates import get_chat_template  # Import get_chat_template
 from datasets import Dataset  # Import Dataset from Hugging Face datasets
 import subprocess
+from utils import find_highest_checkpoint
 
 class CustomLoggingCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
@@ -22,14 +23,15 @@ class FinetuneLM:
         self,
         data, 
         epochs=1,
-        learning_rate=1e-4,
+        learning_rate=5e-5,
         warmup_ratio=0.1,
         gradient_accumulation_steps=16,
         optim="adamw_torch",
         model_id="unsloth/Phi-3.5-mini-instruct",
         peft_r=8,
         peft_alpha=16,
-        peft_dropout=0.0
+        peft_dropout=0.0,
+        retrain_flag=None
     ):
         self.data = data
         self.epochs = epochs
@@ -39,19 +41,30 @@ class FinetuneLM:
         self.optim = optim
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_id = model_id
-
-        # 1. Load base text model and tokenizer
+        
+        if retrain_flag:
+            print("Retrain = True. Attempting to resume from latest checkpoint.")
+            try:
+                model_name = find_highest_checkpoint("./model_cp")
+                print(f"Found checkpoint: {model_name}. Resuming training there...")
+            except:
+                print(f"No checkpoint found in, training from scratch.")
+        else:
+            model_name = self.model_id
+            
         self.base_model, self.tokenizer = FastLanguageModel.from_pretrained(
-            model_name=self.model_id,
+            model_name=model_name,
             load_in_4bit=False,
             use_gradient_checkpointing=False,
         )
+        
+        # Delete all checkpoints
+        shutil.rmtree("./model_cp", ignore_errors=True) if retrain_flag and os.path.exists("./model_cp") else None
 
         # 2. Wrap the model with LoRA (text-only)
         self.model = FastLanguageModel.get_peft_model(
             self.base_model,
             target_modules=["q_proj", "k_proj", "v_proj", "up_proj", "down_proj", "o_proj", "gate_proj"],
-            # target_modules=["q_proj", "v_proj"],
             r=peft_r,
             lora_alpha=peft_alpha,
             lora_dropout=peft_dropout,
@@ -136,7 +149,6 @@ class FinetuneLM:
             lr_scheduler_type="linear",
             seed=3407,
             logging_strategy="steps",
-            # Remove dataset_kwargs to enable automatic tokenization
             max_seq_length=2048,
         )
 
@@ -165,7 +177,6 @@ class FinetuneLM:
 
 
 def olive_opt():
-
     cmd_auto_opt = [
         "olive", "auto-opt",
         "--model_name_or_path", "model_cp/saved",

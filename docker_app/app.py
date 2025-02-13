@@ -300,22 +300,8 @@ def run_model_llm():
         if not metadata:
             return jsonify({"error": "No metadata provided."}), 400
 
-        data_entries = metadata.get("data", [])
-
-        reconstructed_data = []
-        for idx, entry in enumerate(data_entries):
-            input_text = entry.get("input", "").strip()
-            output_text = entry.get("output", "").strip()
-
-            if not input_text or not output_text:
-                return jsonify({
-                    "error": f"Data entry at index {idx} is missing 'input' or 'output'."
-                }), 400
-
-            reconstructed_data.append({
-                "input": input_text,
-                "output": output_text
-            })
+        reconstructed_data = metadata.get("data", [])
+        retrain_flag = metadata.get("retrain", None) 
 
         model_type = metadata.get("model_type", "Phi-3.5-mini")
         finetune_params = {
@@ -328,6 +314,7 @@ def run_model_llm():
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
             "peft_dropout": metadata.get("peft_dropout", 0.01),
+            "retrain_flag": retrain_flag
         }
 
         def finetune_task(data: List[dict], params: dict):
@@ -345,6 +332,7 @@ def run_model_llm():
                     peft_r=params["peft_r"],
                     peft_alpha=params["peft_alpha"],
                     peft_dropout=params["peft_dropout"],
+                    retrain_flag=params["retrain_flag"]
                 )
                 finetuner.run()
                 print("Optimizing model with olive in background..")

@@ -7,7 +7,8 @@ from unsloth import FastVisionModel
 from trl import SFTTrainer, SFTConfig
 from unsloth import is_bf16_supported
 from unsloth.trainer import UnslothVisionDataCollator
-
+from utils import find_highest_checkpoint
+import shutil, os
 
 class CustomLoggingCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
@@ -30,15 +31,30 @@ class FinetuneQwenVL:
                  peft_r=8,
                  peft_alpha=16,
                  peft_dropout=0.05,
+                 retrain_flag=None
                 ):
         self.epochs = epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_id = model_id
+        
+        if retrain_flag:
+            print("Retrain = True. Attempting to resume from latest checkpoint.")
+            try:
+                model_name = find_highest_checkpoint("./model_cp")
+                print(f"Found checkpoint: {model_name}. Resuming training there...")
+            except:
+                print(f"No checkpoint found in, training from scratch.")
+        else:
+            model_name = self.model_id
+            
         self.base_model, self.tokenizer = FastVisionModel.from_pretrained(
             model_name = self.model_id,
             load_in_4bit = False,
             use_gradient_checkpointing = "unsloth",
         )
+        
+        shutil.rmtree("./model_cp", ignore_errors=True) if retrain_flag and os.path.exists("./model_cp") else None
+        
         self.model = FastVisionModel.get_peft_model(
             self.base_model,
             finetune_vision_layers     = True, # False if not finetuning vision layers

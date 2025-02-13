@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from transformers import (
     AutoProcessor, 
     AutoModelForCausalLM, 
+    Blip2ForConditionalGeneration,
     BitsAndBytesConfig, 
     TrainingArguments, 
     Trainer,
@@ -16,6 +17,10 @@ from peft import get_peft_model, LoraConfig, TaskType
 import pandas as pd
 from PIL import Image
 import re
+from utils import find_highest_checkpoint
+import shutil, os
+from peft import PeftModel
+import torch.nn as nn
 
 # Custom logging callback to print training progress
 class CustomLoggingCallback(TrainerCallback):
@@ -119,7 +124,7 @@ class FinetuneBLIP2:
                  peft_r=8,
                  peft_alpha=16,
                  peft_dropout=0.05,
-                 formatter="Question: {prompt}\nImage: <image>\nAnswer: {answer}"
+                 retrain_flag=None
                 ):
         self.epochs = epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -131,7 +136,7 @@ class FinetuneBLIP2:
         self.model_id = model_id
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
         self.tokenizer = self.processor.tokenizer
-        self.base_model = AutoModelForCausalLM.from_pretrained(
+        self.base_model = Blip2ForConditionalGeneration.from_pretrained(
             model_id,
             _attn_implementation='eager',
             trust_remote_code=True,
@@ -139,8 +144,16 @@ class FinetuneBLIP2:
             quantization_config=self.bnb_config,
             device_map="auto"
         )
-        # For BLIP2, you may want to apply LoRA to the Q-Former and/or language model modules.
-        # Here we assume that targeting the projection modules in the Q-Former is beneficial.
+        if retrain_flag:
+            print("Retrain = True. Attempting to resume from latest checkpoint.")
+            try:
+                adapter_path = find_highest_checkpoint("./model_cp")
+                self.base_model = PeftModel.from_pretrained(self.base_model, adapter_path)
+                # self.base_model = ForwardWrapper(self.base_model)
+            except:
+                print(f"No checkpoint found in, training from scratch.")
+        shutil.rmtree("./model_cp", ignore_errors=True) if retrain_flag and os.path.exists("./model_cp") else None
+        
         self.peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM, 
             r=peft_r, 
@@ -153,7 +166,7 @@ class FinetuneBLIP2:
         self.warmup_ratio = warmup_ratio
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.optim = optim
-        self.formatter = formatter
+        self.formatter = "Question: {prompt}\nImage: <image>\nAnswer: {answer}"
         self.data = data
 
     def run(self):

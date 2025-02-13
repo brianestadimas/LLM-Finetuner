@@ -1,7 +1,6 @@
 from tqdm import tqdm
 import sys
 import time
-
 import torch
 from torch.utils.data import Dataset
 from transformers import AutoProcessor, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments, Trainer
@@ -11,7 +10,10 @@ import pandas as pd
 from PIL import Image
 import re
 from transformers import TrainerCallback
-
+from utils import find_highest_checkpoint
+import shutil, os
+from peft import PeftModel
+import torch.nn as nn
 
 class CustomLoggingCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
@@ -90,6 +92,16 @@ class ImageTextDataset(Dataset):
 
         return encodings
 
+class ForwardWrapper(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, *args, **kwargs):
+        # Remove the unexpected 'num_items_in_batch' if present.
+        kwargs.pop("num_items_in_batch", None)
+        return self.model(*args, **kwargs)
+
 
 class FinetunePhi3V:
     def __init__(self, 
@@ -103,7 +115,7 @@ class FinetunePhi3V:
                  peft_r=8,
                  peft_alpha=16,
                  peft_dropout=0.05,
-                 formatter="<|user|>\n<|image_1|>{prompt}<|end|><|assistant|>{answer}<|end|>"
+                 retrain_flag=None
                 ):
         self.epochs = epochs
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,7 +124,7 @@ class FinetunePhi3V:
             bnb_8bit_compute_dtype=torch.float16,  # Use float16 for computation
             bnb_8bit_use_double_quant=True,  # Use double quantization for memory efficiency
         )
-        self.model_id = model_id
+        
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
         self.tokenizer = self.processor.tokenizer
         self.base_model = AutoModelForCausalLM.from_pretrained(
@@ -123,6 +135,16 @@ class FinetunePhi3V:
             quantization_config=self.bnb_config,
             device_map="auto"
         )
+        if retrain_flag:
+            print("Retrain = True. Attempting to resume from latest checkpoint.")
+            try:
+                adapter_path = find_highest_checkpoint("./model_cp")
+                self.base_model = PeftModel.from_pretrained(self.base_model, adapter_path)
+                self.base_model = ForwardWrapper(self.base_model)
+            except:
+                print(f"No checkpoint found in, training from scratch.")
+        shutil.rmtree("./model_cp", ignore_errors=True) if retrain_flag and os.path.exists("./model_cp") else None
+        
         self.peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM, 
             r=peft_r, 
@@ -135,7 +157,7 @@ class FinetunePhi3V:
         self.warmup_ratio = warmup_ratio
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.optim = optim
-        self.formatter = formatter
+        self.formatter = "<|user|>\n<|image_1|>{prompt}<|end|><|assistant|>{answer}<|end|>"
         self.data = data  # Store the data
 
     def run(self):
