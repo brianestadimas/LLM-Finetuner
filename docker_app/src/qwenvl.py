@@ -7,7 +7,7 @@ from unsloth import FastVisionModel
 from trl import SFTTrainer, SFTConfig
 from unsloth import is_bf16_supported
 from unsloth.trainer import UnslothVisionDataCollator
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 import shutil, os
 
 class CustomLoggingCallback(TrainerCallback):

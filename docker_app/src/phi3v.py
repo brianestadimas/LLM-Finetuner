@@ -10,7 +10,7 @@ import pandas as pd
 from PIL import Image
 import re
 from transformers import TrainerCallback
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 import shutil, os
 from peft import PeftModel
 import torch.nn as nn

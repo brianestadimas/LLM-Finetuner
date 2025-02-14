@@ -7,7 +7,7 @@ from unsloth import FastLanguageModel, is_bf16_supported
 from unsloth.chat_templates import get_chat_template  # Import get_chat_template
 from datasets import Dataset  # Import Dataset from Hugging Face datasets
 import subprocess
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 
 class CustomLoggingCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):

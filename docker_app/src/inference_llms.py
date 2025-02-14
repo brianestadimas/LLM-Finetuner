@@ -3,7 +3,7 @@ import torch
 from unsloth import FastLanguageModel
 from PIL import Image
 from unsloth.chat_templates import get_chat_template
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 
 # Globals for holding the loaded model and processor
 MODEL = None

@@ -17,7 +17,7 @@ from peft import get_peft_model, LoraConfig, TaskType
 import pandas as pd
 from PIL import Image
 import re
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 import shutil, os
 from peft import PeftModel
 import torch.nn as nn

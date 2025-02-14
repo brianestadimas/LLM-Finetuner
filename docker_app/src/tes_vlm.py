@@ -1,4 +1,4 @@
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 from qwenvl import FinetuneQwenVL
 from phi3v import FinetunePhi3V
 from blip2 import FinetuneBLIP2

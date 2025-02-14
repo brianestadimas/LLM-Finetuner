@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 from transformers import AutoModelForCausalLM, AutoProcessor, BitsAndBytesConfig
 from peft import PeftModel
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 
 # Globals for holding the loaded model and processor
 MODEL = None
