@@ -1,9 +1,8 @@
 from src.utils import find_highest_checkpoint
-from qwenvl import FinetuneQwenVL
-from phi3v import FinetunePhi3V
-from blip2 import FinetuneBLIP2
-from inference_qwenvl import run_inference_qwenvl
-from inference_phi3v import run_inference_phi3v
+from src.qwenvl import FinetuneQwenVL
+from src.phi3v import FinetunePhi3V
+from src.inference_qwenvl import run_inference_qwenvl
+from src.inference_phi3v import run_inference_phi3v
 import pandas as pd
 from PIL import Image
 
@@ -11,9 +10,9 @@ from PIL import Image
 
 sample_data = [{"image": "image.jpg", "input": "What is in the image?", "output": "A bag and only bag"}]
 
-model_id = "Salesforce/blip2-opt-2.7b"
-# model_id = "unsloth/Qwen2-VL-7B-Instruct"
-finetuner = FinetuneBLIP2(data=sample_data, epochs=15, learning_rate=5e-5, model_id=model_id, peft_alpha=16, \
+# model_id = "Salesforce/blip2-opt-2.7b"
+model_id = "unsloth/Qwen2-VL-7B-Instruct"
+finetuner = FinetuneQwenVL(data=sample_data, epochs=15, learning_rate=5e-5, model_id=model_id, peft_alpha=16, \
         peft_r=16, peft_dropout=0.0, gradient_accumulation_steps=8, warmup_ratio=0.1)
 finetuner.run()
 

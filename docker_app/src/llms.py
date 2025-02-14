@@ -81,6 +81,14 @@ class FinetuneLM:
             f"<|im_start|>assistant\n{assistant_answer}<|im_end|>"
         )
         return {"text": formatted_text}
+
+    def format_data_deepseek(self, row):
+        user_prompt = row["input"]
+        assistant_answer = row["output"]
+        formatted_text = (
+            f"### Instruction:\n{user_prompt}\n### Response:\n{assistant_answer}"
+        )
+        return {"text": formatted_text}
     
     def format_data_chatml(self, row, tokn):
         user_prompt = row["input"]
@@ -110,8 +118,6 @@ class FinetuneLM:
             template_name = "mistral"
         elif "llama" in self.model_id.lower():
             template_name = "llama-3"
-        elif "deepseek" in self.model_id.lower() and "qwen" in self.model_id.lower():
-            template_name = "zephyr"
         else:
             template_name = None
 
@@ -123,14 +129,9 @@ class FinetuneLM:
                 map_eos_token=True,
             )
             formatted_data = [self.format_data_chatml(row, tokn) for row in self.data]
-            
         elif "deepseek" in self.model_id.lower() and "qwen" in self.model_id.lower():
-            try:
-                formatted_data = [self.format_data(row) for row in self.data]
-            except:
-                formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
+            formatted_data = [self.format_data_deepseek(row) for row in self.data]
         else:
-            # Otherwise, default to your simpler Qwen/Phi style
             formatted_data = [self.format_data(row) for row in self.data]
 
         dataset = Dataset.from_list(formatted_data)
@@ -164,7 +165,7 @@ class FinetuneLM:
         # Initialize and run trainer
         trainer = SFTTrainer(
             model=self.model,
-            dataset_text_field="text",
+            # dataset_text_field="text",
             tokenizer=self.tokenizer,
             train_dataset=dataset,
             args=training_args,
