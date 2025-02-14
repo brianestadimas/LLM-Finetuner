@@ -33,6 +33,9 @@ def finetune_route():
     is_llm = data.get('is_llm', False)
     description = data.get('description')
     runpod_api_key = data.get('runpod_api_key')
+    peft_r = data.get('peft_r', 16)
+    peft_alpha = data.get('peft_alpha', 16)
+    peft_dropout = data.get('peft_dropout', 0.0)
 
     if not email or not model_name or not model_type or not description:
         return jsonify({"error": "email, model_name, model_type, and description are required"}), 400
@@ -55,7 +58,10 @@ def finetune_route():
         model_name=model_name,
         model_type=model_type,
         is_llm=is_llm,
-        description=description
+        description=description,
+        peft_alpha=peft_alpha,
+        peft_dropout=peft_dropout,
+        peft_r=peft_r,
     )
     db.session.add(new_run)
     db.session.commit()
@@ -97,10 +103,10 @@ def finetune_route():
             )
             podcast_id = pod.get('id') + "-5000"
             if podcast_id:
-                break  # If successful, exit loop
+                break  
 
         except Exception as e:
-            last_error = str(e)  # Store the error and try the next GPU
+            last_error = str(e) 
 
     if not podcast_id:
         runpod.api_key = Config.RUNPOD_KEY
@@ -114,7 +120,6 @@ def finetune_route():
 
         return jsonify({"error": f"Failed to create a pod: {last_error}"}), 500
 
-    # Update the run and associate it with the user
     new_run.status = "running"
     new_run.podcast_id = podcast_id
     user.run_id = run_id
@@ -161,16 +166,12 @@ def finished_finetuning():
         return jsonify({"error": "Run with the provided podcast ID not found"}), 404
 
     try:
-        # Update the run status to "finished" or "removed"
         run.status = "finished"  # or "removed" based on your logic
         run.is_llm = is_llm
 
-        # Find the user associated with the run_id
         user = User.query.filter_by(run_id=run.id).first()
         if user:
             user.run_id = None
-
-        # Commit changes to the database
         db.session.commit()
 
         return jsonify({"message": "Finetuning finished successfully", "run_id": run.id}), 200
@@ -531,6 +532,32 @@ def update_status():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to update status: {str(e)}"}), 500
+
+
+@app.route('/get_retrain_info', methods=['GET'])
+def get_retrain_info():
+    """
+    Returns retraining info (model name, model type, etc.) for the given model_id (podcast_id).
+    Example usage: /get_retrain_info?model_id=12345
+    """
+    model_id = request.args.get('model_id')
+    if not model_id:
+        return jsonify({"error": "model_id query parameter is required"}), 400
+
+    # Find the run in your database
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": f"No run found for model_id: {model_id}"}), 404
+
+    # Return the relevant fields from the Run table
+    return jsonify({
+        "model_name": run.model_name or "",
+        "model_type": run.model_type or "",
+        "description": run.description or "",
+        "peft_r": run.peft_r if run.peft_r is not None else 16,
+        "peft_alpha": run.peft_alpha if run.peft_alpha is not None else 16,
+        "peft_dropout": run.peft_dropout if run.peft_dropout is not None else 0.0
+    }), 200
 
 
 if __name__ == "__main__":

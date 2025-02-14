@@ -27,6 +27,9 @@ class Run(db.Model):
     description = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=True, default=lambda: datetime.now(tz=timezone.utc))
     updated_at = db.Column(db.DateTime, nullable=True, default=lambda: datetime.now(tz=timezone.utc), onupdate=lambda: datetime.now(tz=timezone.utc))
+    peft_r = db.Column(db.Integer, nullable=True)
+    peft_alpha = db.Column(db.Integer, nullable=True)
+    peft_dropout = db.Column(db.Float, nullable=True)
 
 class User(db.Model):
     __tablename__ = 'users'
