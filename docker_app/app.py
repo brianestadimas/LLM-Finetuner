@@ -316,6 +316,15 @@ def run_model_llm():
             "peft_dropout": metadata.get("peft_dropout", 0.01),
             "retrain_flag": retrain_flag
         }
+        model_pod_id = metadata.get("model_id")
+        
+        try:
+            requests.get(
+                "https://console.vais.app/api/update_status",
+                params={"model_id": model_pod_id, "status": "running", "is_llm": True}
+            )
+        except:
+            pass
 
         def finetune_task(data: List[dict], params: dict):
             global is_running
@@ -338,7 +347,6 @@ def run_model_llm():
                 print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
 
-                model_pod_id = metadata.get("model_id")
                 response = requests.get(
                     "https://console.vais.app/api/update_status",
                     params={"model_id": model_pod_id, "status": "finished", "is_llm": True}
@@ -385,6 +393,17 @@ def run_model_llm():
         print("Error in /run_model_llm POST:", str(e))
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/clear_logs', methods=['POST'])
+def clear_logs():
+    global log_file_path
+    try:
+        with open(log_file_path, "w", encoding="utf-8"):
+            pass
+        return jsonify({"message": "Log file has been cleared."}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to clear logs: {str(e)}"}), 500
 
 
 @app.route('/logs', methods=['GET'])
