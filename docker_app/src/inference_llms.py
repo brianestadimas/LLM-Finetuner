@@ -5,10 +5,10 @@ from PIL import Image
 from unsloth.chat_templates import get_chat_template
 from src.utils import find_highest_checkpoint
 
-# Globals for holding the loaded model, tokenizer, and conversation history
+# Globals for holding the loaded model and processor
 MODEL = None
 TOKENIZER = None
-CONVERSATION_HISTORY = []  # Each entry: {"role": "user"/"assistant", "content": "..."}
+
 
 def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
     global MODEL, TOKENIZER
@@ -22,8 +22,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         adapter_path = find_highest_checkpoint(checkpoint_root)
         print(f"Highest checkpoint found: {adapter_path}")
         model_name = adapter_path
-    except Exception as e:
-        print(f"No checkpoint found ({e}), using model_id")
+    except:
         model_name = model_id
 
     print(f"Loading model from: {model_name}")
@@ -32,20 +31,14 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         load_in_4bit=False,
     )
     
+    # tokenizer.eos_token = "<|im_end|>"
+    # tokenizer.special_tokens_map["eos_token"] = "<|im_end|>"
     MODEL = model
     TOKENIZER = tokenizer
     return MODEL, TOKENIZER
 
-def update_conversation_history(role: str, content: str):
-    """Append a new message to the conversation history."""
-    global CONVERSATION_HISTORY
-    CONVERSATION_HISTORY.append({"role": role, "content": content})
 
-def format_data_inference(tokenizer, conversation_history, model_id: str) -> str:
-    """
-    Formats the full conversation history as a prompt.
-    Uses a chat template if available; otherwise, falls back to a basic format.
-    """
+def format_data_inference(tokenizer, user_input, model_id: str) -> str:
     template_name = None
     model_id_lower = model_id.lower()
 
@@ -53,60 +46,55 @@ def format_data_inference(tokenizer, conversation_history, model_id: str) -> str
         template_name = "mistral"
     elif "llama" in model_id_lower:
         template_name = "llama-3"
-    # You can add more conditions (e.g., for deepseek/qwen) as needed.
+    # elif "deepseek" in model_id_lower and "qwen" in model_id_lower:
+    #     template_name = None
 
     if template_name:
+        row_json = [{"role": "user", "content": user_input}]
+        tokn = get_chat_template(
+            tokenizer,
+            chat_template=template_name,
+            mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
+            map_eos_token=True,
+        )
         try:
-            tokn = get_chat_template(
-                tokenizer,
-                chat_template=template_name,
-                mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
-                map_eos_token=True,
-            )
             formatted_text = tokn.apply_chat_template(
-                conversation_history,
+                row_json,
                 tokenize=False,
                 add_generation_prompt=False
             )
         except Exception:
-            formatted_text = "\n".join(
-                [f"### {msg['role'].capitalize()}:\n{msg['content']}" for msg in conversation_history]
-            ) + "\n### Response:\n"
+            formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
     elif "deepseek" in model_id_lower and "qwen" in model_id_lower:
-        formatted_text = "\n".join(
-            [f"### {msg['role'].capitalize()}:\n{msg['content']}" for msg in conversation_history]
-        ) + "\n### Response:\n"
+        formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
     else:
-        formatted_text = "\n".join(
-            [f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>" for msg in conversation_history]
-        ) + "\n<|im_start|>assistant\n"
+        formatted_text = (
+            f"<|im_start|>user\n{user_input}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
 
     return formatted_text
 
-def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int = 1000,
-                     model_id: str = "unsloth/Phi-3.5-mini-instruct") -> str:
+
+def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int = 1000, model_id: str = "unsloth/Phi-3.5-mini-instruct") -> str:
     model, tokenizer = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
-    
-    # Add the new user input to the conversation history
-    update_conversation_history("user", user_input)
-    
-    # Format the prompt using the full conversation history
-    prompt = format_data_inference(tokenizer, CONVERSATION_HISTORY, model_id)
-    
-    # Tokenize inputs
+    prompt = format_data_inference(tokenizer, user_input, model_id) 
+
+    # 4. Tokenize inputs
     inputs = tokenizer(
         prompt,
         return_tensors="pt",
         add_special_tokens=False,
     )
     inputs = {k: v.to("cuda") for k, v in inputs.items()}
-    
-    # Generate response
+
+    # 5. Generate response
     outputs = model.generate(
         **inputs,
         max_new_tokens=max_tokens,
         temperature=temperature,
+        # pad_token_id=tokenizer.eos_token_id,
         do_sample=False,
         repetition_penalty=1.2,
         use_cache=True 
@@ -115,14 +103,55 @@ def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int 
         outputs[0][inputs["input_ids"].shape[1]:], 
         skip_special_tokens=True
     )
-    
-    # Optional cleanup for specific models (e.g., Llama)
     if "llama" in model_id.lower():
         unwanted_prefix = "assistant\n\n"
         if generated_text.startswith(unwanted_prefix):
             generated_text = generated_text[len(unwanted_prefix):].lstrip()
     
-    # Add the assistant's response to the conversation history
-    update_conversation_history("assistant", generated_text)
-    
     return generated_text
+
+
+def stream_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int = 1000,
+                        model_id: str = "unsloth/Phi-3.5-mini-instruct"):
+    """
+    Streaming version: yields chunks of text as they are generated.
+
+    This approach decodes each token ID in the generated sequence, then yields it.
+    Note that the entire generation is still done in one pass by the model, 
+    but we reveal tokens incrementally to the client.
+    """
+    model, tokenizer = initialize_model(model_id)
+    FastLanguageModel.for_inference(model)
+    prompt = format_data_inference(tokenizer, user_input, model_id)
+
+    inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
+    inputs = {k: v.to("cuda") for k, v in inputs.items()}
+
+    # Call generate with return_dict_in_generate=True to get token IDs
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_tokens,
+        temperature=temperature,
+        do_sample=False,
+        repetition_penalty=1.2,
+        use_cache=True,
+        return_dict_in_generate=True,
+    )
+
+    # Gather the newly generated tokens (excluding the prompt)
+    gen_ids = outputs.sequences[0][inputs["input_ids"].shape[1]:]
+
+    # Decode them token by token or chunk by chunk
+    accumulated = ""
+    for token_id in gen_ids:
+        token_str = tokenizer.decode(token_id.unsqueeze(0), skip_special_tokens=True)
+        accumulated += token_str
+        # If you want to chunk by length or wait for whitespace, you can do that here
+        # For simplicity, we'll yield every time we get a token
+        yield f"data: {accumulated}\n\n"
+        accumulated = ""
+
+    # If there's leftover text in 'accumulated', yield it
+    # (In this example, we yield after every token, so accumulated might be empty)
+    if accumulated:
+        yield f"data: {accumulated}\n\n"

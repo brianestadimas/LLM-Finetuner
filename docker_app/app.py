@@ -19,7 +19,7 @@ import base64
 from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl
-from src.inference_llms import run_inference_lm
+from src.inference_llms import run_inference_lm, stream_inference_lm
 
 app = Flask(__name__)
 CORS(app)
@@ -585,6 +585,41 @@ def inference_llm():
         print(f"Error in /inference: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/inference-llm/stream', methods=['POST'])
+def inference_llm_stream():
+    """
+    Streaming endpoint: returns partial tokens as SSE (text/event-stream).
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing JSON payload."}), 400
+
+    if 'input' not in data:
+        return jsonify({"error": "Missing 'input' parameter in JSON."}), 400
+    if 'model_type' not in data:
+        return jsonify({"error": "Missing 'model_type' parameter in JSON."}), 400
+
+    user_input = data.get("input", "").strip()
+    temperature = float(data.get("temperature", 0.0))
+    max_tokens = int(data.get("max_tokens", 500))
+    model_type = data.get("model_type")
+
+    if model_type not in MODEL_HF_URL_LLM:
+        return jsonify({"error": f"Unsupported model_type: {model_type}"}), 400
+    model_id = MODEL_HF_URL_LLM[model_type]
+
+    try:
+        # Return an SSE stream
+        return Response(
+            stream_inference_lm(user_input, temperature, max_tokens, model_id),
+            mimetype='text/event-stream'
+        )
+
+    except Exception as e:
+        print(f"Error in /inference-llm/stream: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
