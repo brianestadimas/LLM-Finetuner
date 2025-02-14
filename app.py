@@ -1,6 +1,6 @@
 import os, json
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import requests
 from src import db, Run, create_app
 from src.config import Config
@@ -476,6 +476,59 @@ def inference_llm(model_id):
 
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request failed: {str(e)}"}), 500
+
+@app.route('/inference-llm/stream/<model_id>', methods=['POST'])
+def inference_llm_stream_proxy(model_id):
+    """
+    This route proxies a streaming request to the Docker container
+    running on RunPod. The container must have its own
+    `/inference-llm/stream` endpoint that returns SSE.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing JSON body"}), 400
+
+    input_text = data.get("input", "")
+    temperature = data.get("temperature", 0.0)
+    max_tokens = data.get("max_tokens", 500)
+
+    # Look up the run in your DB, so we know the model_type
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": "Invalid model_id or run not found."}), 404
+
+    model_type = run.model_type
+    if not model_type:
+        return jsonify({"error": "No model_type found for this run."}), 400
+
+    # Build the container’s streaming endpoint
+    # e.g. https://<pod_id>.proxy.runpod.net/inference-llm/stream
+    container_stream_url = f"https://{model_id}.proxy.runpod.net/inference-llm/stream"
+
+    # Construct JSON payload
+    payload = {
+        "input": input_text,
+        "temperature": float(temperature),
+        "max_tokens": int(max_tokens),
+        "model_type": model_type
+    }
+
+    try:
+        # Forward the request to the Docker container
+        # We must pass 'stream=True' to get a streaming response
+        r = requests.post(container_stream_url, json=payload, stream=True)
+
+        # Return an SSE response that streams back to the client
+        def sse_proxy():
+            # Iterate over lines coming from the container
+            for line in r.iter_lines(decode_unicode=True):
+                if line:  # forward each SSE line directly
+                    yield line + "\n"
+
+        return Response(sse_proxy(), mimetype='text/event-stream')
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/update_status', methods=['GET'])
