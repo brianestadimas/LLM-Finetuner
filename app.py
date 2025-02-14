@@ -480,10 +480,6 @@ def inference_llm(model_id):
 
 @app.route('/inference-llm/stream/<model_id>', methods=['POST'])
 def inference_llm_stream_proxy(model_id):
-    """
-    Proxies SSE streaming from the Docker container at
-    'POST /inference-llm/stream' to this main app route.
-    """
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON body"}), 400
@@ -495,8 +491,7 @@ def inference_llm_stream_proxy(model_id):
     if not input_text or not model_id:
         return jsonify({"error": "Missing required parameters: input and/or model_id"}), 400
 
-    # Build the streaming endpoint inside the container
-    # e.g., https://<podcast_id>.proxy.runpod.net/inference-llm/stream
+    # Build the container's streaming endpoint, e.g.:
     container_stream_url = f"https://{model_id}.proxy.runpod.net/inference-llm/stream"
 
     # Validate run in the DB
@@ -508,7 +503,7 @@ def inference_llm_stream_proxy(model_id):
     if not model_type:
         return jsonify({"error": "Model type not found for this model_id."}), 400
 
-    # Construct JSON payload to pass to the container
+    # Construct JSON payload
     payload = {
         "input": input_text,
         "temperature": float(temperature),
@@ -517,23 +512,20 @@ def inference_llm_stream_proxy(model_id):
     }
 
     try:
-        # Start a streaming post request to the Docker container
         r = requests.post(container_stream_url, json=payload, stream=True)
+        def plain_chunked_proxy():
+            for raw_line in r.iter_lines(decode_unicode=True):
+                if raw_line:
+                    line = raw_line.replace("data: ", "")
 
-        def sse_proxy():
-            # SSE requires each chunk to be prefixed with "data: " and a newline
-            # We'll read each line from the container's response
-            for line in r.iter_lines(decode_unicode=True):
-                if line:
-                    # Forward the line as SSE
-                    yield f"data: {line}\n\n"
+                    line = line.strip()
 
-        # Return a Flask Response that streams data from sse_proxy()
-        return Response(sse_proxy(), mimetype='text/event-stream')
+                    yield line
+
+        return Response(plain_chunked_proxy(), mimetype='text/plain')
 
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request to container streaming endpoint failed: {str(e)}"}), 500
-
 
 @app.route('/update_status', methods=['GET'])
 def update_status():
