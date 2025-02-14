@@ -1,5 +1,6 @@
 import os, json
 from datetime import datetime
+import re
 from flask import Flask, request, jsonify, Response
 import requests
 from src import db, Run, create_app
@@ -491,19 +492,16 @@ def inference_llm_stream_proxy(model_id):
     if not input_text or not model_id:
         return jsonify({"error": "Missing required parameters: input and/or model_id"}), 400
 
-    # Build the container's streaming endpoint, e.g.:
     container_stream_url = f"https://{model_id}.proxy.runpod.net/inference-llm/stream"
 
-    # Validate run in the DB
     run = Run.query.filter_by(podcast_id=model_id).first()
     if not run:
         return jsonify({"error": "Invalid model_id (podcast_id) or model not found."}), 404
 
-    model_type = run.model_type 
+    model_type = run.model_type
     if not model_type:
         return jsonify({"error": "Model type not found for this model_id."}), 400
 
-    # Construct JSON payload
     payload = {
         "input": input_text,
         "temperature": float(temperature),
@@ -516,14 +514,22 @@ def inference_llm_stream_proxy(model_id):
         def plain_chunked_proxy():
             for raw_line in r.iter_lines(decode_unicode=True):
                 if raw_line:
+                    # 1) Remove SSE prefix like "data: "
                     line = raw_line.replace("data: ", "")
-                    yield line + " "
 
+                    # 2) Collapse multiple spaces into one
+                    line = re.sub(r'\s+', ' ', line)
+
+                    # 3) Remove space before punctuation: e.g. "word  ," -> "word,"
+                    line = re.sub(r'\s+([.,!?:;])', r'\1', line)
+
+                    yield line
 
         return Response(plain_chunked_proxy(), mimetype='text/plain')
 
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request to container streaming endpoint failed: {str(e)}"}), 500
+    
 
 @app.route('/update_status', methods=['GET'])
 def update_status():
