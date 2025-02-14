@@ -517,10 +517,8 @@ def inference_llm_stream_proxy(model_id):
             for raw_line in r.iter_lines(decode_unicode=True):
                 if raw_line:
                     line = raw_line.replace("data: ", "")
-
-                    line = line.strip()
-
                     yield line
+
 
         return Response(plain_chunked_proxy(), mimetype='text/plain')
 
