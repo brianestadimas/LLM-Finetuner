@@ -477,35 +477,38 @@ def inference_llm(model_id):
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request failed: {str(e)}"}), 500
 
+
 @app.route('/inference-llm/stream/<model_id>', methods=['POST'])
 def inference_llm_stream_proxy(model_id):
     """
-    This route proxies a streaming request to the Docker container
-    running on RunPod. The container must have its own
-    `/inference-llm/stream` endpoint that returns SSE.
+    Proxies SSE streaming from the Docker container at
+    'POST /inference-llm/stream' to this main app route.
     """
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON body"}), 400
 
-    input_text = data.get("input", "")
+    input_text = data.get("input")
     temperature = data.get("temperature", 0.0)
-    max_tokens = data.get("max_tokens", 500)
+    max_tokens = data.get("max_tokens", 1000)
 
-    # Look up the run in your DB, so we know the model_type
-    run = Run.query.filter_by(podcast_id=model_id).first()
-    if not run:
-        return jsonify({"error": "Invalid model_id or run not found."}), 404
+    if not input_text or not model_id:
+        return jsonify({"error": "Missing required parameters: input and/or model_id"}), 400
 
-    model_type = run.model_type
-    if not model_type:
-        return jsonify({"error": "No model_type found for this run."}), 400
-
-    # Build the container’s streaming endpoint
-    # e.g. https://<pod_id>.proxy.runpod.net/inference-llm/stream
+    # Build the streaming endpoint inside the container
+    # e.g., https://<podcast_id>.proxy.runpod.net/inference-llm/stream
     container_stream_url = f"https://{model_id}.proxy.runpod.net/inference-llm/stream"
 
-    # Construct JSON payload
+    # Validate run in the DB
+    run = Run.query.filter_by(podcast_id=model_id).first()
+    if not run:
+        return jsonify({"error": "Invalid model_id (podcast_id) or model not found."}), 404
+
+    model_type = run.model_type 
+    if not model_type:
+        return jsonify({"error": "Model type not found for this model_id."}), 400
+
+    # Construct JSON payload to pass to the container
     payload = {
         "input": input_text,
         "temperature": float(temperature),
@@ -514,21 +517,22 @@ def inference_llm_stream_proxy(model_id):
     }
 
     try:
-        # Forward the request to the Docker container
-        # We must pass 'stream=True' to get a streaming response
+        # Start a streaming post request to the Docker container
         r = requests.post(container_stream_url, json=payload, stream=True)
 
-        # Return an SSE response that streams back to the client
         def sse_proxy():
-            # Iterate over lines coming from the container
+            # SSE requires each chunk to be prefixed with "data: " and a newline
+            # We'll read each line from the container's response
             for line in r.iter_lines(decode_unicode=True):
-                if line:  # forward each SSE line directly
-                    yield line + "\n"
+                if line:
+                    # Forward the line as SSE
+                    yield f"data: {line}\n\n"
 
+        # Return a Flask Response that streams data from sse_proxy()
         return Response(sse_proxy(), mimetype='text/event-stream')
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Request to container streaming endpoint failed: {str(e)}"}), 500
 
 
 @app.route('/update_status', methods=['GET'])

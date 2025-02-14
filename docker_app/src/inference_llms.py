@@ -1,9 +1,11 @@
 import os
+import threading
 import torch
 from unsloth import FastLanguageModel
 from PIL import Image
 from unsloth.chat_templates import get_chat_template
 from src.utils import find_highest_checkpoint
+from transformers import TextIteratorStreamer
 
 # Globals for holding the loaded model and processor
 MODEL = None
@@ -111,47 +113,49 @@ def run_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int 
     return generated_text
 
 
-def stream_inference_lm(user_input: str, temperature: float = 1.0, max_tokens: int = 1000,
-                        model_id: str = "unsloth/Phi-3.5-mini-instruct"):
+def run_inference_lm_streaming(
+    user_input: str,
+    temperature: float = 0.0,
+    max_tokens: int = 1000,
+    model_id: str = "unsloth/Phi-3.5-mini-instruct"
+):
     """
-    Streaming version: yields chunks of text as they are generated.
-
-    This approach decodes each token ID in the generated sequence, then yields it.
-    Note that the entire generation is still done in one pass by the model, 
-    but we reveal tokens incrementally to the client.
+    Returns an iterator of tokens using Hugging Face's TextIteratorStreamer.
+    You can wrap this in a Flask Response to send tokens to the client in real time.
     """
     model, tokenizer = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
     prompt = format_data_inference(tokenizer, user_input, model_id)
 
+    # 1. Tokenize
     inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
     inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
-    # Call generate with return_dict_in_generate=True to get token IDs
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=max_tokens,
-        temperature=temperature,
-        do_sample=False,
-        repetition_penalty=1.2,
-        use_cache=True,
-        return_dict_in_generate=True,
+    # 2. Create a TextIteratorStreamer to capture generated tokens
+    streamer = TextIteratorStreamer(
+        tokenizer=tokenizer,
+        skip_prompt=True,           # so we only stream new tokens
+        skip_special_tokens=True    # omit special tokens
     )
 
-    # Gather the newly generated tokens (excluding the prompt)
-    gen_ids = outputs.sequences[0][inputs["input_ids"].shape[1]:]
+    # 3. Launch generation in a background thread so we can yield tokens
+    def generate_in_background():
+        model.generate(
+            **inputs,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            do_sample=False,
+            repetition_penalty=1.2,
+            use_cache=True,
+            streamer=streamer  # <-- The magic: streamer receives tokens as they arrive
+        )
 
-    # Decode them token by token or chunk by chunk
-    accumulated = ""
-    for token_id in gen_ids:
-        token_str = tokenizer.decode(token_id.unsqueeze(0), skip_special_tokens=True)
-        accumulated += token_str
-        # If you want to chunk by length or wait for whitespace, you can do that here
-        # For simplicity, we'll yield every time we get a token
-        yield f"data: {accumulated}\n\n"
-        accumulated = ""
+    thread = threading.Thread(target=generate_in_background)
+    thread.start()
 
-    # If there's leftover text in 'accumulated', yield it
-    # (In this example, we yield after every token, so accumulated might be empty)
-    if accumulated:
-        yield f"data: {accumulated}\n\n"
+    # 4. Yield tokens from the streamer iterator, one by one
+    for new_text in streamer:
+        # This is just raw text. You could chunk or accumulate if you prefer.
+        yield new_text
+
+    thread.join()
