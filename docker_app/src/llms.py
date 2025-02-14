@@ -111,7 +111,7 @@ class FinetuneLM:
         elif "llama" in self.model_id.lower():
             template_name = "llama-3"
         elif "deepseek" in self.model_id.lower() and "qwen" in self.model_id.lower():
-            template_name = "chatml"
+            template_name = "zephyr"
         else:
             template_name = None
 
@@ -123,6 +123,12 @@ class FinetuneLM:
                 map_eos_token=True,
             )
             formatted_data = [self.format_data_chatml(row, tokn) for row in self.data]
+            
+        elif "deepseek" in self.model_id.lower() and "qwen" in self.model_id.lower():
+            try:
+                formatted_data = [self.format_data(row) for row in self.data]
+            except:
+                formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
         else:
             # Otherwise, default to your simpler Qwen/Phi style
             formatted_data = [self.format_data(row) for row in self.data]

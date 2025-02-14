@@ -47,7 +47,7 @@ def format_data_inference(tokenizer, user_input, model_id: str) -> str:
     elif "llama" in model_id_lower:
         template_name = "llama-3"
     elif "deepseek" in model_id_lower and "qwen" in model_id_lower:
-        template_name = "chatml"
+        template_name = "zephyr"
 
     if template_name:
         row_json = [{"role": "user", "content": user_input}]
@@ -65,6 +65,7 @@ def format_data_inference(tokenizer, user_input, model_id: str) -> str:
             )
         except Exception:
             formatted_text = f"### Instruction:\n{user_input}\n### Response:\n"
+    
     else:
         formatted_text = (
             f"<|im_start|>user\n{user_input}<|im_end|>\n"
