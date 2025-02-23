@@ -8,6 +8,7 @@ from src.phi3v import FinetunePhi3V
 from src.blip2 import FinetuneBLIP2
 from src.qwenvl import FinetuneQwenVL
 from src.llms import FinetuneLM, olive_opt
+from src.llms_multiturn import FinetuneLMAgent
 from flask_cors import CORS
 import os
 import json
@@ -20,6 +21,7 @@ from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
+from src.inference_llms_memory import run_inference_lm_memory
 
 app = Flask(__name__)
 CORS(app)
@@ -118,6 +120,10 @@ MODEL_HF_URL_LLM = {
     "Qwen2.5-Math-1.5B": "unsloth/Qwen2.5-Math-1.5B",
 }
 
+## AGENT Attributes
+conversation_history = []
+SYSTEM_MESSAGE = """You are a helpful AI assistant. Please be clear and concise."""
+
 
 @app.route('/run_model', methods=['POST'])
 def run_model():
@@ -153,7 +159,6 @@ def run_model():
         saved_files = []
         for idx, file_storage in enumerate(uploaded_files):
             if file_storage and file_storage.filename:
-                # Ensure unique filenames to prevent overwriting
                 unique_filename = f"upload_{int(time.time())}_{idx}_{file_storage.filename}"
                 save_path = os.path.join(upload_dir, unique_filename)
                 file_storage.save(save_path)
@@ -287,7 +292,6 @@ def run_model():
         return jsonify({"error": str(e)}), 500
 
 
-
 @app.route('/run_model_llm', methods=['POST'])
 def run_model_llm():
     global is_running, finetune_thread
@@ -301,7 +305,8 @@ def run_model_llm():
             return jsonify({"error": "No metadata provided."}), 400
 
         reconstructed_data = metadata.get("data", [])
-        retrain_flag = metadata.get("retrain", None) 
+        retrain_flag = metadata.get("retrain", None)
+        agent_flag = metadata.get("is_agent", None)
 
         model_type = metadata.get("model_type", "Phi-3.5-mini")
         finetune_params = {
@@ -328,21 +333,31 @@ def run_model_llm():
 
         def finetune_task(data: List[dict], params: dict):
             global is_running
+            global SYSTEM_MESSAGE, conversation_history
             is_running = True
             try:
-                finetuner = FinetuneLM(
-                    data=data,
-                    epochs=params["epochs"],
-                    learning_rate=params["learning_rate"],
-                    warmup_ratio=params["warmup_ratio"],
-                    gradient_accumulation_steps=params["gradient_accumulation_steps"],
-                    optim=params["optim"],
-                    model_id=params["model_type"],
-                    peft_r=params["peft_r"],
-                    peft_alpha=params["peft_alpha"],
-                    peft_dropout=params["peft_dropout"],
-                    retrain_flag=params["retrain_flag"]
-                )
+                if agent_flag:
+                    finetune_class = FinetuneLMAgent
+                    SYSTEM_MESSAGE = metadata.get("system_prompt", "")
+                    conversation_history = []
+                else:
+                    finetune_class = FinetuneLM
+
+                finetuner = finetune_class(**{
+                    "data": data,
+                    "epochs": params["epochs"],
+                    "learning_rate": params["learning_rate"],
+                    "warmup_ratio": params["warmup_ratio"],
+                    "gradient_accumulation_steps": params["gradient_accumulation_steps"],
+                    "optim": params["optim"],
+                    "model_id": params["model_type"],
+                    "peft_r": params["peft_r"],
+                    "peft_alpha": params["peft_alpha"],
+                    "peft_dropout": params["peft_dropout"],
+                    "retrain_flag": params["retrain_flag"],
+                    "system_prompt": SYSTEM_MESSAGE,
+                })
+                                
                 finetuner.run()
                 print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
@@ -545,6 +560,7 @@ def inference_b64():
 
 @app.route('/inference-llm', methods=['POST'])
 def inference_llm():
+    global conversation_history, SYSTEM_MESSAGE
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON payload."}), 400
@@ -558,15 +574,28 @@ def inference_llm():
     temperature = float(data.get("temperature", 0.0))
     max_tokens = int(data.get("max_tokens", 500))
     model_type = data.get("model_type")
+    is_agent = data.get("is_agent", False)
 
     if model_type not in MODEL_HF_URL_LLM:
         return jsonify({"error": f"Unsupported model_type: {model_type}"}), 400
     model_id = MODEL_HF_URL_LLM[model_type]
 
     try:
-        result = run_inference_lm(user_input, temperature, max_tokens, model_id)
+        if is_agent:
+            result, updated_conversation_history = run_inference_lm_memory(
+                model_id,
+                user_input,
+                conversation_history=conversation_history,
+                system_prompt=SYSTEM_MESSAGE,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            if updated_conversation_history:
+                conversation_history = updated_conversation_history
+        else:
+            result = run_inference_lm(user_input, temperature, max_tokens, model_id)
+        
 
-        # Extract <think> content and separate from the result
         think_match = re.search(r"^(.*?)</think>", result, re.DOTALL)
         if think_match:
             think_content = think_match.group(1).strip()

@@ -33,8 +33,6 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         load_in_4bit=False,
     )
     
-    # tokenizer.eos_token = "<|im_end|>"
-    # tokenizer.special_tokens_map["eos_token"] = "<|im_end|>"
     MODEL = model
     TOKENIZER = tokenizer
     return MODEL, TOKENIZER
@@ -119,10 +117,6 @@ def run_inference_lm_streaming(
     max_tokens: int = 1000,
     model_id: str = "unsloth/Phi-3.5-mini-instruct"
 ):
-    """
-    Returns an iterator of tokens using Hugging Face's TextIteratorStreamer.
-    You can wrap this in a Flask Response to send tokens to the client in real time.
-    """
     model, tokenizer = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
     prompt = format_data_inference(tokenizer, user_input, model_id)

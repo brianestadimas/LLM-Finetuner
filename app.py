@@ -32,6 +32,7 @@ def finetune_route():
     model_name = data.get('model_name')
     model_type = data.get('model_type')
     is_llm = data.get('is_llm', False)
+    is_agent = data.get('is_agent', False)
     description = data.get('description')
     runpod_api_key = data.get('runpod_api_key')
     peft_r = data.get('peft_r', 16)
@@ -59,6 +60,7 @@ def finetune_route():
         model_name=model_name,
         model_type=model_type,
         is_llm=is_llm,
+        is_agent=is_agent,
         description=description,
         peft_alpha=peft_alpha,
         peft_dropout=peft_dropout,
@@ -245,6 +247,7 @@ def run_list():
                 "model_type": run.model_type,
                 "description": run.description,
                 "is_llm": run.is_llm,
+                "is_agent": run.is_agent,
                 "created_at": run.created_at.isoformat() if run.created_at else None,
                 "updated_at": run.updated_at.isoformat() if run.updated_at else None,
             }
@@ -468,7 +471,8 @@ def inference_llm(model_id):
         "input": input_text,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "model_type": model_type
+        "model_type": model_type,
+        "is_agent": run.is_agent,
     }
     try:
         # Post JSON payload to the model endpoint.
@@ -506,7 +510,8 @@ def inference_llm_stream_proxy(model_id):
         "input": input_text,
         "temperature": float(temperature),
         "max_tokens": int(max_tokens),
-        "model_type": model_type
+        "model_type": model_type,
+        "is_agent": run.is_agent,
     }
 
     try:

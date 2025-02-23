@@ -31,7 +31,8 @@ class FinetuneLM:
         peft_r=8,
         peft_alpha=16,
         peft_dropout=0.0,
-        retrain_flag=None
+        retrain_flag=None,
+        system_prompt=""
     ):
         self.data = data
         self.epochs = epochs
@@ -41,6 +42,7 @@ class FinetuneLM:
         self.optim = optim
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_id = model_id
+        self.system_prompt = system_prompt
         
         if retrain_flag:
             print("Retrain = True. Attempting to resume from latest checkpoint.")
