@@ -5,6 +5,16 @@ from transformers import DataCollatorForSeq2Seq
 from unsloth import FastLanguageModel, is_bf16_supported
 from datasets import Dataset
 from unsloth.chat_templates import get_chat_template 
+from transformers import TrainerCallback
+
+
+class CustomLoggingCallback(TrainerCallback):
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is not None:
+            epoch = state.epoch if state.epoch else "?"
+            step = state.global_step
+            loss = logs.get("loss", "N/A")
+            print(f"[{step}/{state.max_steps}, Epoch {epoch}] Step\tTraining Loss: {loss}")
 
 
 class FinetuneLMAgent:
@@ -105,6 +115,7 @@ class FinetuneLMAgent:
             tokenizer=self.tokenizer,
             train_dataset=dataset,
             args=training_args,
+            callbacks=[CustomLoggingCallback()]
         )
 
         trainer.train()
