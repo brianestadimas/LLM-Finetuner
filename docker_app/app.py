@@ -335,29 +335,41 @@ def run_model_llm():
             global is_running
             global SYSTEM_MESSAGE, conversation_history
             is_running = True
+            finetuner = None
             try:
                 if agent_flag:
-                    finetune_class = FinetuneLMAgent
                     SYSTEM_MESSAGE = metadata.get("system_prompt", "")
                     conversation_history = []
+                    finetuner = FinetuneLMAgent(
+                        data=data,
+                        epochs=params["epochs"],
+                        learning_rate=params["learning_rate"],
+                        warmup_ratio=params["warmup_ratio"],
+                        gradient_accumulation_steps=params["gradient_accumulation_steps"],
+                        optim=params["optim"],
+                        model_id=params["model_type"],
+                        peft_r=params["peft_r"],
+                        peft_alpha=params["peft_alpha"],
+                        peft_dropout=params["peft_dropout"],
+                        retrain_flag=params["retrain_flag"],
+                        system_prompt=SYSTEM_MESSAGE,
+                    )
                 else:
-                    finetune_class = FinetuneLM
-
-                finetuner = finetune_class(**{
-                    "data": data,
-                    "epochs": params["epochs"],
-                    "learning_rate": params["learning_rate"],
-                    "warmup_ratio": params["warmup_ratio"],
-                    "gradient_accumulation_steps": params["gradient_accumulation_steps"],
-                    "optim": params["optim"],
-                    "model_id": params["model_type"],
-                    "peft_r": params["peft_r"],
-                    "peft_alpha": params["peft_alpha"],
-                    "peft_dropout": params["peft_dropout"],
-                    "retrain_flag": params["retrain_flag"],
-                    "system_prompt": SYSTEM_MESSAGE,
-                })
-                                
+                    finetuner = FinetuneLM(
+                        data=data,
+                        epochs=params["epochs"],
+                        learning_rate=params["learning_rate"],
+                        warmup_ratio=params["warmup_ratio"],
+                        gradient_accumulation_steps=params["gradient_accumulation_steps"],
+                        optim=params["optim"],
+                        model_id=params["model_type"],
+                        peft_r=params["peft_r"],
+                        peft_alpha=params["peft_alpha"],
+                        peft_dropout=params["peft_dropout"],
+                        retrain_flag=params["retrain_flag"],
+                        system_prompt=SYSTEM_MESSAGE,
+                    )
+ 
                 finetuner.run()
                 print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
