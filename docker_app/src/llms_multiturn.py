@@ -29,7 +29,7 @@ class FinetuneLMAgent:
         self.optim = optim
         self.model_id = model_id  # keep track for deepseek logic
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.data = json.load(data)
+        self.data = data
         self.system_prompt = system_prompt
 
         self.base_model, self.tokenizer = FastLanguageModel.from_pretrained(
