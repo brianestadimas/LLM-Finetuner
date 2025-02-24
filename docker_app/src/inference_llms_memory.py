@@ -50,7 +50,7 @@ def run_inference_lm_memory(model_id, user_input, conversation_history, system_p
         return_tensors="pt",
         add_special_tokens=False,
         truncation=True,
-        max_length=2048
+        max_length=4096
     )
     inputs = {k: v.to("cuda") for k, v in inputs.items()}
 

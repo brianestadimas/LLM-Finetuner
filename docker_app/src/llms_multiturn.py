@@ -61,19 +61,26 @@ class FinetuneLMAgent:
             use_rslora=False,
             loftq_config=None
         )
-    
+
     def formatting_prompts_func(self, examples):
         convos = examples["messages"]
-        texts = []
-        for convo in convos:
-            updated_convo = [{"role": "system", "content": self.system_prompt}] + convo
-            conversation_text = self.tokenizer.apply_chat_template(
-                updated_convo,
-                tokenize=False,
-                add_generation_prompt=False
-            )
-            texts.append(conversation_text)
-        return {"text": texts}
+        convo_with_prompt = [{"role": "system", "content": self.system_prompt}] + convos
+        texts = [self.tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convo_with_prompt]
+        return { "text" : texts, }
+        
+    # def formatting_prompts_func(self, examples):
+    #     convos = examples["messages"]
+    #     texts = []
+    #     for convo in convos:
+    #         updated_convo = [{"role": "system", "content": self.system_prompt}] + convo
+    #         conversation_text = self.tokenizer.apply_chat_template(
+    #             updated_convo,
+    #             tokenize=False,
+    #             add_generation_prompt=False
+    #         )
+    #         texts.append(conversation_text)
+    #     print(f"text: {texts}")
+    #     return {"text": texts}
 
     def run(self):
         if not self.data:  # Check if data is empty
@@ -81,11 +88,28 @@ class FinetuneLMAgent:
             self.base_model
             print("Base model has been saved.")
             return
+        
+        print(f"✅ Starting FinetuneLMAgent.run() with {len(self.data)} conversation(s)")
+        print(self.data)
 
-        formatted_data = [conv for conv in self.data]
-
-        dataset = Dataset.from_list(formatted_data)
-        dataset = dataset.map(self.formatting_prompts_func, batched = True,)
+        dataset = Dataset.from_list(self.data)
+        
+        new_data = []
+        for row in dataset:
+            # Pass a dictionary with "messages" in a list so it mimics batched input
+            mapped = self.formatting_prompts_func({"messages": [row["messages"]]})
+            # mapped["text"] is a list containing the new text, so mapped["text"][0]
+            # is the single string we need
+            new_data.append(
+                {
+                    **row,
+                    "text": mapped["text"][0],
+                }
+            )
+        dataset = Dataset.from_list(new_data)
+        
+        print("✅ Mapped dataset sample =>", dataset[0])
+        print("✅ Creating SFTConfig & trainer...")
 
         training_args = SFTConfig(
             learning_rate=self.learning_rate,
@@ -118,5 +142,8 @@ class FinetuneLMAgent:
             callbacks=[CustomLoggingCallback()]
         )
 
+        print("✅ Starting trainer.train() now...")
         trainer.train()
+        
+        print("✅ trainer.train() completed.")
         

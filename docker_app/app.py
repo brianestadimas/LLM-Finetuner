@@ -335,7 +335,6 @@ def run_model_llm():
             global is_running
             global SYSTEM_MESSAGE, conversation_history
             is_running = True
-            finetuner = None
             try:
                 if agent_flag:
                     SYSTEM_MESSAGE = metadata.get("system_prompt", "")
