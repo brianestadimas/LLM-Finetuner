@@ -96,10 +96,7 @@ class FinetuneLMAgent:
         
         new_data = []
         for row in dataset:
-            # Pass a dictionary with "messages" in a list so it mimics batched input
             mapped = self.formatting_prompts_func({"messages": [row["messages"]]})
-            # mapped["text"] is a list containing the new text, so mapped["text"][0]
-            # is the single string we need
             new_data.append(
                 {
                     **row,
@@ -108,9 +105,6 @@ class FinetuneLMAgent:
             )
         dataset = Dataset.from_list(new_data)
         
-        print("✅ Mapped dataset sample =>", dataset[0])
-        print("✅ Creating SFTConfig & trainer...")
-
         training_args = SFTConfig(
             learning_rate=self.learning_rate,
             output_dir='./model_cp',
@@ -142,8 +136,5 @@ class FinetuneLMAgent:
             callbacks=[CustomLoggingCallback()]
         )
 
-        print("✅ Starting trainer.train() now...")
         trainer.train()
-        
-        print("✅ trainer.train() completed.")
         
