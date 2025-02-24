@@ -1,6 +1,6 @@
 from unsloth import FastLanguageModel
 from transformers import TextStreamer
-from utils import find_highest_checkpoint
+from src.utils import find_highest_checkpoint
 
 MODEL = None
 TOKENIZER = None
