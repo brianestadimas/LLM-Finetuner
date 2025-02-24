@@ -51,29 +51,19 @@ class FinetuneLMAgent:
             use_rslora=False,
             loftq_config=None
         )
-        
-    def formatting_prompts_func(self, example):
-        updated_convo = [{"role": "system", "content": self.system_prompt}] + example["messages"]
-
-        conversation_text = self.tokenizer.apply_chat_template(
-            updated_convo,
-            tokenize=False,
-            add_generation_prompt=False
-        )
-        return {"text": conversation_text}
-
-    # def formatting_prompts_func(self, examples):
-    #     convos = examples["messages"]
-    #     texts = []
-    #     for convo in convos:
-    #         updated_convo = [{"role": "system", "content": self.system_prompt}] + convo
-    #         conversation_text = self.tokenizer.apply_chat_template(
-    #             updated_convo,
-    #             tokenize=False,
-    #             add_generation_prompt=False
-    #         )
-    #         texts.append(conversation_text)
-    #     return {"text": texts}
+    
+    def formatting_prompts_func(self, examples):
+        convos = examples["messages"]
+        texts = []
+        for convo in convos:
+            updated_convo = [{"role": "system", "content": self.system_prompt}] + convo
+            conversation_text = self.tokenizer.apply_chat_template(
+                updated_convo,
+                tokenize=False,
+                add_generation_prompt=False
+            )
+            texts.append(conversation_text)
+        return {"text": texts}
 
     def run(self):
         if not self.data:  # Check if data is empty
@@ -85,7 +75,7 @@ class FinetuneLMAgent:
         formatted_data = [conv for conv in self.data]
 
         dataset = Dataset.from_list(formatted_data)
-        dataset = dataset.map(self.formatting_prompts_func, batched = False,)
+        dataset = dataset.map(self.formatting_prompts_func, batched = True,)
 
         training_args = SFTConfig(
             learning_rate=self.learning_rate,

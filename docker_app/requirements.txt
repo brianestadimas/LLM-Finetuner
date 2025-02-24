@@ -5,7 +5,7 @@ tqdm==4.67.1
 # torchvision==0.16.2+cu121
 torchvision
 torch==2.5.1
-transformers==4.47.1
+transformers==4.48.2
 peft==0.14.0
 pandas==2.2.3
 Pillow==11.1.0

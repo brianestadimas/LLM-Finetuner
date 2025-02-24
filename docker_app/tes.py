@@ -1,15 +1,11 @@
-from src.llms import FinetuneLM
+from src.llms_multiturn import FinetuneLMAgent
 from src.inference_llms import run_inference_lm
 import pandas as pd
 
-# Load first 100 sample data from train.csv
-train_data = pd.read_csv('train.csv').iloc[250:300]
-
-# Format the data into an array of dictionaries with 'input' and 'output' keys
-sample_data = [{'input': row['input'], 'output': row['output']} for index, row in train_data.iterrows()]
-# sample_data = []
-
-model_id = "unsloth/DeepSeek-R1-Distill-Qwen-7B"
-finetuner = FinetuneLM(data=sample_data, epochs=1, learning_rate=5e-6, model_id=model_id, peft_alpha=16, \
-        peft_r=16, peft_dropout=0.0, gradient_accumulation_steps=8, warmup_ratio=0.1)
+data_path = "conversation.json"
+data = [{"id":1,"title":"Conv #1","messages":[{"role":"user","content":"Hello"},{"role":"agent","content":"Halo bagaimana saya dapat bantu anda?"},{"role":"user","content":"Bisa bagi tahu nomor PIC?"},{"role":"agent","content":"Maaf, nomor PIC bersifat rahasia dan privasi"}]}]
+system_prompt = "Anda adalah Pembantu Khidmat Pelanggan AI Product Finder. Tugasan anda adalah untuk memberikan jawapan yang jelas, ringkas dan tepat kepada sebarang pertanyaan pelanggan berdasarkan maklumat di bawah. Sila balas dalam Bahasa Malaysia sahaja dan hanya berikan maklumat yang berkaitan. Jika pertanyaan yang diterima tidak berkaitan dengan maklumat berikut, balas dengan \"Saya tidak tahu\".\n\nReply only in malaysia language and not indonesian\n\nBusiness Information:\nMaklumat Produk: AI Product Finder\n\n1. Pengenalan:\nAI Product Finder adalah sistem pintar yang direka untuk membantu pengguna mencari produk dengan cepat dan tepat melalui penggunaan teknologi kecerdasan buatan. Sistem ini mengintegrasikan analisis data dan algoritma pembelajaran mesin untuk memberikan cadangan produk yang disesuaikan dengan keperluan pengguna.\n\n2. Penerangan Produk:\nProduk ini menawarkan beberapa ciri utama seperti berikut:\n\nAnalisis Pintar: Menggunakan algoritma terkini untuk mengenalpasti keperluan dan corak pencarian pengguna.\nIntegrasi Data: Menyediakan maklumat terkini mengenai produk dari pelbagai sumber.\nAntara Muka Mesra Pengguna: Direka untuk kemudahan navigasi dan penggunaan.\nPenapisan Lanjutan: Membolehkan pencarian mengikut kategori, harga, dan ulasan pengguna.\nTeks dummy ini bertujuan untuk menggambarkan fungsi asas dan kelebihan produk secara ringkas.\n\n3. Lokasi Pejabat:\nAlamat Pejabat Utama:\nNo. 123, Jalan Teknologi, Kawasan Perniagaan, 57000 Kuala Lumpur, Malaysia.\n\n4. Maklumat PIC (Person In Charge):\nNama: Ahmad bin Ali\nJawatan: Pengurus Projek\nTelefon: +603-12345678\nEmail: pic@aiproductfinder.com"
+model_id = "unsloth/Qwen2.5-7B-Instruct"
+finetuner = FinetuneLMAgent(data=data, epochs=10, learning_rate=1e-4, model_id=model_id, peft_alpha=32, \
+        peft_r=32, peft_dropout=0.0, gradient_accumulation_steps=4, warmup_ratio=0.1, system_prompt=system_prompt)
 finetuner.run()
