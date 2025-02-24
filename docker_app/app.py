@@ -351,7 +351,6 @@ def run_model_llm():
                         peft_r=params["peft_r"],
                         peft_alpha=params["peft_alpha"],
                         peft_dropout=params["peft_dropout"],
-                        retrain_flag=params["retrain_flag"],
                         system_prompt=SYSTEM_MESSAGE,
                     )
                 else:
