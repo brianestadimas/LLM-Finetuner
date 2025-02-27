@@ -64,8 +64,8 @@ class FinetuneLMAgent:
 
     def formatting_prompts_func(self, examples):
         convos = examples["messages"]
-        convo_with_prompt = [{"role": "system", "content": self.system_prompt}] + convos
-        texts = [self.tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convo_with_prompt]
+        # convo_with_prompt = [{"role": "system", "content": self.system_prompt}] + convos
+        texts = [self.tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
         return { "text" : texts, }
         
     # def formatting_prompts_func(self, examples):
@@ -88,12 +88,8 @@ class FinetuneLMAgent:
             self.base_model
             print("Base model has been saved.")
             return
-        
-        print(f"✅ Starting FinetuneLMAgent.run() with {len(self.data)} conversation(s)")
-        print(self.data)
 
         dataset = Dataset.from_list(self.data)
-        
         new_data = []
         for row in dataset:
             mapped = self.formatting_prompts_func({"messages": [row["messages"]]})
@@ -124,7 +120,7 @@ class FinetuneLMAgent:
             lr_scheduler_type="linear",
             seed=3407,
             logging_strategy="steps",
-            max_seq_length=2048,
+            max_seq_length=8192,
         )
         FastLanguageModel.for_training(self.model)
 
