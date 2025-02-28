@@ -19,7 +19,7 @@ import re
 import base64
 from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
-from src.inference_qwenvl import run_inference_qwenvl
+from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
 from src.inference_llms_memory import run_inference_lm_memory
 
@@ -657,6 +657,28 @@ def inference_llm_stream():
             yield f"data: {token_chunk}\n\n"
 
     return Response(sse_generator(), mimetype='text/event-stream')
+
+
+@app.route('/inference-video', methods=['POST'])
+def inference_video():
+    if 'input' not in request.form:
+        return jsonify({"error": "Missing 'input' in form data."}), 400
+
+    user_input = request.form['input'].strip()
+    temperature = float(request.form.get('temperature', 1.0))  # Default: 0.0
+    max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
+    model_type = request.form['model_type']
+
+    try:
+        model_id = MODEL_HF_URL[model_type]
+        result = run_inference_qwenvl_video(user_input = user_input, temperature = temperature, max_tokens = max_tokens)
+        
+        return jsonify({"result": result}), 200
+
+    except Exception as e:
+        print(f"Error in /inference: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
