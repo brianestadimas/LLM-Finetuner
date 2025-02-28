@@ -16,7 +16,7 @@ ENV CC=gcc
 COPY requirements.txt .
 RUN pip install -r requirements.txt 
 RUN pip install olive-ai[ort-genai,auto-opt]
-# RUN pip install --upgrade --no-cache-dir "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+RUN pip install --upgrade bitsandbytes
 
 # Copy the entire application
 COPY . /app

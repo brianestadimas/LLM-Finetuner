@@ -95,7 +95,7 @@ def run_inference_qwenvl(image, user_input, temperature=0.0, max_tokens=500, mod
     return tokenizer.decode(output_ids[:, inputs['input_ids'].shape[1]:][0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
 
-def run_inference_qwenvl_video(video_path="Video.mp4", user_input="Describe video", temperature=0.0, 
+def run_inference_qwenvl_video(video_path="./Video.mp4", user_input="Describe video", temperature=0.0, 
                                max_tokens=500, model_id="unsloth/Qwen2-VL-7B-Instruct") -> str:
     model, tokenizer = FastVisionModel.from_pretrained(model_name=model_id, load_in_4bit=True, use_gradient_checkpointing=False)
     processor = AutoProcessor.from_pretrained(model_id)

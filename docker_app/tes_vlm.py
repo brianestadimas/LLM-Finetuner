@@ -1,7 +1,7 @@
 from src.utils import find_highest_checkpoint
 from src.qwenvl import FinetuneQwenVL
 from src.phi3v import FinetunePhi3V
-from src.inference_qwenvl import run_inference_qwenvl
+from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
 from src.inference_phi3v import run_inference_phi3v
 import pandas as pd
 from PIL import Image
@@ -24,13 +24,13 @@ sample_data = [{"image": "image.jpg", "input": "What is in the image?", "output"
 model_id = "unsloth/Qwen2-VL-7B-Instruct"
 
 # # TEST inference
-user_input = "What is in the image?"
+user_input = "What is the content?"
 # image = "image.jpg" # convert to pil
 # image_pil = Image.open(image).convert("RGB")
 video_path = "Video.mp4"
 
 # Generate a response
-response = run_inference_phi3v(image=image_pil, user_input=user_input, temperature=1.0, max_tokens=500, model_id=model_id)
+response = run_inference_qwenvl_video()
 print("INPUT=====================================================================")
 print(user_input)
 print("RESPONSE=====================================================================")
