@@ -441,7 +441,7 @@ def inference_b64(model_id):
 
 
 @app.route('/inference-video/<model_id>', methods=['POST'])
-def inference(model_id):
+def inference_video(model_id):
     model_endpoint = f"https://{model_id}.proxy.runpod.net/inference-video"
 
     input_text = request.form.get("input")
