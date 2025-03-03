@@ -481,6 +481,22 @@ def inference_video_front(model_id):
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request failed: {str(e)}"}), 500
 
+@app.route('/inference-video/result/<model_id>', methods=['GET'])
+def get_video_inference_logs_front(model_id):
+    model_endpoint = f"https://{model_id}.proxy.runpod.net/video_inference_logs"
+    try:
+        # Forward the GET request to the Docker app
+        response = requests.get(model_endpoint)
+
+        # If the response is successful, return its text content directly
+        if response.status_code == 200:
+            return Response(response.content, mimetype='text/plain')
+        else:
+            # Return any JSON error from the Docker app
+            return jsonify(response.json()), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Log request failed: {str(e)}"}), 500
 
 
 @app.route('/inference-llm/<model_id>', methods=['POST'])
