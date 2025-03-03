@@ -673,59 +673,51 @@ def inference_video():
         return jsonify({"error": "Missing 'input' in form data."}), 400
 
     user_input = request.form['input'].strip()
-    temperature = float(request.form.get('temperature', 1.0))   # default 1.0
-    max_tokens = int(request.form.get('max_tokens', 500))       # default 500
+    temperature = float(request.form.get('temperature', 1.0))
+    max_tokens = int(request.form.get('max_tokens', 500))
 
     if 'model_type' not in request.form:
         return jsonify({"error": "Missing 'model_type' in form data."}), 400
     model_type = request.form['model_type']
 
-    # Optional: if you want to handle a 'video' file from request.files:
-    # if 'video' not in request.files:
-    #     return jsonify({"error": "Missing 'video' file in form data."}), 400
-    # file = request.files['video']
-    # saved_video_path = os.path.join("uploads", f"{int(time.time())}_{file.filename}")
-    # os.makedirs("uploads", exist_ok=True)
-    # file.save(saved_video_path)
-    #
-    # Then pass saved_video_path instead of "./Video.mp4" below.
+    if 'video' not in request.files:
+        return jsonify({"error": "Missing 'video' file in form data."}), 400
+    file = request.files['video']
+
+    saved_video_path = os.path.join("uploads", f"{int(time.time())}_{file.filename}")
+    os.makedirs("uploads", exist_ok=True)
+    file.save(saved_video_path)
 
     if is_video_inferencing:
         return jsonify({"error": "A video inference job is already running."}), 400
 
-    # For demonstration, we pass a default path "./Video.mp4" 
-    # or you can pass a saved video path from above.
-    video_path = "./Video.mp4"
-
-    # Pull model_id from your dictionary if needed
     model_id = MODEL_HF_URL[model_type]
 
-    # Define a background function
+    try:
+        open(video_inference_logs_path, "w").close()
+    except:
+        pass
+
     def background_video_inference():
         global is_video_inferencing
         is_video_inferencing = True
         try:
-            # Actually run the inference
             result = run_inference_qwenvl_video(
-                video_path=video_path,
+                video_path=saved_video_path,
                 user_input=user_input,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 model_id=model_id
             )
-
-            # Log **only** the raw result
             with open(video_inference_logs_path, "a", encoding="utf-8") as f:
                 f.write(result + "\n")
 
         except Exception as e:
-            # If an error occurs, optionally log it in the video logs
             with open(video_inference_logs_path, "a", encoding="utf-8") as f:
                 f.write(f"ERROR: {str(e)}\n")
         finally:
             is_video_inferencing = False
 
-    # Start background thread
     video_inference_thread = threading.Thread(target=background_video_inference)
     video_inference_thread.start()
 

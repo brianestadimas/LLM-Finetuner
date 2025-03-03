@@ -93,7 +93,7 @@ def run_inference_qwenvl_video(video_path="./Video.mp4", user_input="Describe vi
     processor = AutoProcessor.from_pretrained(model_id)
     FastVisionModel.for_inference(model)
 
-    messages = [{"role": "user", "content": [{"type": "video", "video": f"{video_path}", "max_pixels": 240 * 300, "fps": 1.0}, 
+    messages = [{"role": "user", "content": [{"type": "video", "video": f"{video_path}", "max_pixels": 180 * 240, "fps": 0.5}, 
                                              {"type": "text", "text": user_input}]}]
 
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)

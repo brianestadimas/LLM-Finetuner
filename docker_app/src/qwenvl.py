@@ -49,7 +49,7 @@ class FinetuneQwenVL:
             
         self.base_model, self.tokenizer = FastVisionModel.from_pretrained(
             model_name = self.model_id,
-            load_in_4bit = False,
+            load_in_4bit = True,
             use_gradient_checkpointing = "unsloth",
         )
         

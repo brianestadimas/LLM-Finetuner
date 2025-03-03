@@ -442,38 +442,45 @@ def inference_b64(model_id):
 
 
 @app.route('/inference-video/<model_id>', methods=['POST'])
-def inference_video(model_id):
+def inference_video_front(model_id):
     model_endpoint = f"https://{model_id}.proxy.runpod.net/inference-video"
 
     input_text = request.form.get("input")
-    temperature = request.form.get("temperature", 0.7)  # Default: 0.0
-    max_tokens = request.form.get("max_tokens", 500)    # Default: 500
+    temperature = request.form.get("temperature", 0.7)
+    max_tokens = request.form.get("max_tokens", 500)
 
     if not input_text:
-        return jsonify({"error": "Missing required parameters: input and/or image"}), 400
+        return jsonify({"error": "Missing 'input' parameter"}), 400
+
+    if 'video' not in request.files:
+        return jsonify({"error": "Missing 'video' file in form data."}), 400
+    
+    video_file = request.files['video']
 
     run = Run.query.filter_by(podcast_id=model_id).first()
     if not run:
-        return jsonify({"error": "Invalid model_id (podcast_id) or model not found."}), 404
+        return jsonify({"error": "Invalid model_id or model not found."}), 404
 
-    model_type = run.model_type 
+    model_type = run.model_type
     if not model_type:
         return jsonify({"error": "Model type not found for this model_id."}), 400
 
-    # Prepare request payload
-    # files = {"image": (image.filename, image.stream, image.mimetype)}
     data = {
         "input": input_text,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "model_type": model_type
     }
-    try:
-        response = requests.post(model_endpoint, data=data)
-        return jsonify(response.json()), response.status_code
+    files = {
+        "video": (video_file.filename, video_file.stream, video_file.mimetype)
+    }
 
+    try:
+        response = requests.post(model_endpoint, data=data, files=files)
+        return jsonify(response.json()), response.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request failed: {str(e)}"}), 500
+
 
 
 @app.route('/inference-llm/<model_id>', methods=['POST'])
