@@ -76,8 +76,8 @@ def finetune_route():
         # "NVIDIA GeForce RTX 3070",
         # "NVIDIA GeForce RTX 3080",
         # ("NVIDIA GeForce RTX 3090", "COMMUNITY"),
-        # ("NVIDIA A40", "ALL"),
-        ("NVIDIA A100 80GB PCIe", "ALL")
+        ("NVIDIA A40", "ALL"),
+        # ("NVIDIA A100 80GB PCIe", "ALL")
     ]
     
     podcast_id = None
