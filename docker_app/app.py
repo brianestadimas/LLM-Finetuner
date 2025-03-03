@@ -22,6 +22,8 @@ from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
 from src.inference_llms_memory import run_inference_lm_memory
+from werkzeug.serving import WSGIRequestHandler
+WSGIRequestHandler.protocol_version = "HTTP/1.1"
 
 app = Flask(__name__)
 CORS(app)
@@ -659,25 +661,87 @@ def inference_llm_stream():
     return Response(sse_generator(), mimetype='text/event-stream')
 
 
+video_inference_thread = None
+is_video_inferencing = False
+video_inference_logs_path = "video_inference_logs.txt"
+
 @app.route('/inference-video', methods=['POST'])
 def inference_video():
+    global video_inference_thread, is_video_inferencing
+
     if 'input' not in request.form:
         return jsonify({"error": "Missing 'input' in form data."}), 400
 
     user_input = request.form['input'].strip()
-    temperature = float(request.form.get('temperature', 1.0))  # Default: 0.0
-    max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
+    temperature = float(request.form.get('temperature', 1.0))   # default 1.0
+    max_tokens = int(request.form.get('max_tokens', 500))       # default 500
+
+    if 'model_type' not in request.form:
+        return jsonify({"error": "Missing 'model_type' in form data."}), 400
     model_type = request.form['model_type']
 
-    try:
-        model_id = MODEL_HF_URL[model_type]
-        result = run_inference_qwenvl_video(user_input = user_input, temperature = temperature, max_tokens = max_tokens)
-        
-        return jsonify({"result": result}), 200
+    # Optional: if you want to handle a 'video' file from request.files:
+    # if 'video' not in request.files:
+    #     return jsonify({"error": "Missing 'video' file in form data."}), 400
+    # file = request.files['video']
+    # saved_video_path = os.path.join("uploads", f"{int(time.time())}_{file.filename}")
+    # os.makedirs("uploads", exist_ok=True)
+    # file.save(saved_video_path)
+    #
+    # Then pass saved_video_path instead of "./Video.mp4" below.
 
-    except Exception as e:
-        print(f"Error in /inference: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    if is_video_inferencing:
+        return jsonify({"error": "A video inference job is already running."}), 400
+
+    # For demonstration, we pass a default path "./Video.mp4" 
+    # or you can pass a saved video path from above.
+    video_path = "./Video.mp4"
+
+    # Pull model_id from your dictionary if needed
+    model_id = MODEL_HF_URL[model_type]
+
+    # Define a background function
+    def background_video_inference():
+        global is_video_inferencing
+        is_video_inferencing = True
+        try:
+            # Actually run the inference
+            result = run_inference_qwenvl_video(
+                video_path=video_path,
+                user_input=user_input,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model_id=model_id
+            )
+
+            # Log **only** the raw result
+            with open(video_inference_logs_path, "a", encoding="utf-8") as f:
+                f.write(result + "\n")
+
+        except Exception as e:
+            # If an error occurs, optionally log it in the video logs
+            with open(video_inference_logs_path, "a", encoding="utf-8") as f:
+                f.write(f"ERROR: {str(e)}\n")
+        finally:
+            is_video_inferencing = False
+
+    # Start background thread
+    video_inference_thread = threading.Thread(target=background_video_inference)
+    video_inference_thread.start()
+
+    return jsonify({
+        "message": "Video inference has started in the background."
+    }), 200
+
+
+@app.route('/video_inference_logs', methods=['GET'])
+def get_video_inference_logs():
+    if os.path.exists(video_inference_logs_path):
+        with open(video_inference_logs_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return Response(content, mimetype='text/plain')
+    else:
+        return jsonify({"error": "No video inference log file found."}), 404
 
 
 if __name__ == "__main__":

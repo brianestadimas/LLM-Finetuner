@@ -1,2 +1,4 @@
 .env
 uploads
+docker_app/Video.mp4
+*.mp4
