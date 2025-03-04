@@ -69,6 +69,7 @@ flask_logger.addHandler(flask_handler)
 MODEL_HF_URL = {
     "Phi3V": "microsoft/Phi-3-vision-128k-instruct",
     "Phi3.5V": "microsoft/Phi-3.5-vision-instruct",
+    "Qwen2.5VL": "unsloth/Qwen2.5-VL-7B-Instruct",
     "Qwen2VL": "unsloth/Qwen2-VL-7B-Instruct",
     "Qwen2VL-Mini": "unsloth/Qwen2-VL-2B-Instruct",
     "Pixtral": "unsloth/Pixtral-12B-2409-bnb-4bit",
@@ -675,6 +676,7 @@ def inference_video():
     user_input = request.form['input'].strip()
     temperature = float(request.form.get('temperature', 1.0))
     max_tokens = int(request.form.get('max_tokens', 500))
+    fps = float(request.form.get('fps', 1.0))  # Default: 0.0
 
     if 'model_type' not in request.form:
         return jsonify({"error": "Missing 'model_type' in form data."}), 400
@@ -707,6 +709,7 @@ def inference_video():
                 user_input=user_input,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                fps=fps,
                 model_id=model_id
             )
             with open(video_inference_logs_path, "a", encoding="utf-8") as f:

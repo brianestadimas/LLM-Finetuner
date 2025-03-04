@@ -88,12 +88,12 @@ def run_inference_qwenvl(image, user_input, temperature=0.0, max_tokens=500, mod
 
 
 def run_inference_qwenvl_video(video_path="./Video.mp4", user_input="Describe video", temperature=0.0, 
-                               max_tokens=500, model_id="unsloth/Qwen2-VL-7B-Instruct") -> str:
+                               max_tokens=500, fps=1, model_id="unsloth/Qwen2-VL-7B-Instruct") -> str:
     model, tokenizer = initialize_model(model_id)
     processor = AutoProcessor.from_pretrained(model_id)
     FastVisionModel.for_inference(model)
 
-    messages = [{"role": "user", "content": [{"type": "video", "video": f"{video_path}", "max_pixels": 180 * 240, "fps": 0.5}, 
+    messages = [{"role": "user", "content": [{"type": "video", "video": f"{video_path}", "max_pixels": 360 * 420, "fps": fps}, 
                                              {"type": "text", "text": user_input}]}]
 
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)

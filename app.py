@@ -448,6 +448,7 @@ def inference_video_front(model_id):
     input_text = request.form.get("input")
     temperature = request.form.get("temperature", 0.7)
     max_tokens = request.form.get("max_tokens", 500)
+    fps = request.form.get("fps", 1.0)
 
     if not input_text:
         return jsonify({"error": "Missing 'input' parameter"}), 400
@@ -469,7 +470,8 @@ def inference_video_front(model_id):
         "input": input_text,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "model_type": model_type
+        "model_type": model_type,
+        "fps": fps
     }
     files = {
         "video": (video_file.filename, video_file.stream, video_file.mimetype)

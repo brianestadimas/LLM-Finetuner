@@ -16,3 +16,9 @@ optimum
 unsloth
 xformers
 qwen-vl-utils
+lancedb
+llama-index
+llama-index-vector-stores-lancedb
+sentence-transformers
+llama-index-embeddings-huggingface
+llama-index-readers-web
