@@ -15,12 +15,13 @@ from src.utils import find_highest_checkpoint
 
 MODEL = None
 TOKENIZER = None
+RETRIEVER = None
 
 def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
-    global MODEL, TOKENIZER
+    global MODEL, TOKENIZER, RETRIEVER
     # If already loaded, just return
     if MODEL is not None and TOKENIZER is not None:
-        return MODEL, TOKENIZER
+        return MODEL, TOKENIZER, RETRIEVER
     # Check if local fine-tuned model is present and non-empty
     try:
         adapter_path = find_highest_checkpoint(checkpoint_root)
@@ -34,9 +35,11 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         model_name=model_name,
         load_in_4bit=False,
     )
+    retriever = build_retriever()
+    RETRIEVER = retriever
     MODEL = model
     TOKENIZER = tokenizer
-    return MODEL, TOKENIZER
+    return MODEL, TOKENIZER, retriever
 
 def format_data_inference(user_input, conversation_history, system_prompt):
     recent_history = conversation_history[-10:]
@@ -102,13 +105,18 @@ def retrieve_context(user_input, retriever, top_k=5):
     return "\n\n".join(doc.text for doc in docs[:top_k])
 
 def run_inference_lm_memory(model_id, user_input, conversation_history, system_prompt, temperature=0.5, max_tokens=500):
-    model, tokenizer = initialize_model(model_id)
+    model, tokenizer, retriever = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
-    retriever = build_retriever()
-    retrieved = retrieve_context(user_input, retriever)
-    rag_prompt = f"{system_prompt}\n\nHere is some relevant retrieved context:\n{retrieved}\n\nPlease use this context to answer accurately.\n"
+    retrieved = retrieve_context(user_input, retriever).strip()
+    if retrieved:
+        rag_prompt = (
+            f"{system_prompt}\n\nHere is some relevant retrieved context:\n{retrieved}\n\n"
+            f"Please use this context to answer accurately.\n"
+        )
+    else:
+        rag_prompt = system_prompt
+
     prompt = format_data_inference(user_input, conversation_history, rag_prompt)
-    
     inputs = tokenizer(
         prompt,
         return_tensors="pt",
