@@ -207,7 +207,7 @@ def run_model():
             "model_type": MODEL_HF_URL[model_type],
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
-            "peft_dropout": metadata.get("peft_dropout", 0.01),
+            "peft_dropout": metadata.get("peft_dropout", 0.51),
         }
 
         def finetune_task(data: List[dict], params: dict):
@@ -330,7 +330,7 @@ def run_model_llm():
             "model_type": MODEL_HF_URL_LLM[model_type],
             "peft_r": metadata.get("peft_r", 8),
             "peft_alpha": metadata.get("peft_alpha", 16),
-            "peft_dropout": metadata.get("peft_dropout", 0.01),
+            "peft_dropout": metadata.get("peft_dropout", 0.51),
             "retrain_flag": retrain_flag
         }
         model_pod_id = metadata.get("model_id")
@@ -522,7 +522,7 @@ def inference():
         return jsonify({"error": "Missing 'model_type' in form data."}), 400
 
     user_input = request.form['input'].strip()
-    temperature = float(request.form.get('temperature', 1.0))  # Default: 0.0
+    temperature = float(request.form.get('temperature', 1.0))  # Default: 0.5
     max_tokens = int(request.form.get('max_tokens', 500))      # Default: 500
     model_type = request.form['model_type']
 
@@ -554,7 +554,7 @@ def inference_b64():
 
     user_input = data.get('input', '').strip()
     image_b64 = data.get('image', '')
-    temperature = float(request.form.get('temperature', 0.0)) 
+    temperature = float(request.form.get('temperature', 0.5)) 
     max_tokens = int(request.form.get('max_tokens', 500))
     model_type = data.get('model_type', '')
 
@@ -593,7 +593,7 @@ def inference_llm():
         return jsonify({"error": "Missing 'model_type' parameter in JSON."}), 400
 
     user_input = data.get("input", "").strip()
-    temperature = float(data.get("temperature", 0.0))
+    temperature = float(data.get("temperature", 0.5))
     max_tokens = int(data.get("max_tokens", 500))
     model_type = data.get("model_type")
     is_agent = data.get("is_agent", False)
@@ -651,7 +651,7 @@ def inference_llm_stream():
         return jsonify({"error": "Missing 'model_type' parameter in JSON."}), 400
 
     user_input = data.get("input", "").strip()
-    temperature = float(data.get("temperature", 0.0))
+    temperature = float(data.get("temperature", 0.5))
     max_tokens = int(data.get("max_tokens", 500))
     model_type = data.get("model_type")
 
@@ -685,7 +685,7 @@ def inference_video():
     user_input = request.form['input'].strip()
     temperature = float(request.form.get('temperature', 1.0))
     max_tokens = int(request.form.get('max_tokens', 500))
-    fps = float(request.form.get('fps', 1.0))  # Default: 0.0
+    fps = float(request.form.get('fps', 1.0))  # Default: 0.5
 
     if 'model_type' not in request.form:
         return jsonify({"error": "Missing 'model_type' in form data."}), 400
@@ -851,4 +851,4 @@ def delete_rag_item():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.5.0.5', port=5000, debug=True)

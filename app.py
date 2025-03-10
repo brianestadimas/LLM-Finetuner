@@ -370,7 +370,7 @@ def inference(model_id):
     model_endpoint = f"https://{model_id}.proxy.runpod.net/inference"
 
     input_text = request.form.get("input")
-    temperature = request.form.get("temperature", 0.0)  # Default: 0.0
+    temperature = request.form.get("temperature", 0.5)  # Default: 0.0
     max_tokens = request.form.get("max_tokens", 500)    # Default: 500
     image = request.files.get("image")
 
@@ -420,7 +420,7 @@ def inference_b64(model_id):
     if not model_type:
         return jsonify({"error": "Model type not found for this model_id."}), 400
 
-    temperature = float(data.get("temperature", 0.0))
+    temperature = float(data.get("temperature", 0.5))
     max_tokens = int(data.get("max_tokens", 500))
 
     if not input_text or not image_b64:
@@ -446,7 +446,7 @@ def inference_video_front(model_id):
     model_endpoint = f"https://{model_id}.proxy.runpod.net/inference-video"
 
     input_text = request.form.get("input")
-    temperature = request.form.get("temperature", 0.7)
+    temperature = request.form.get("temperature", 0.5)
     max_tokens = request.form.get("max_tokens", 500)
     fps = request.form.get("fps", 1.0)
 
@@ -509,7 +509,7 @@ def inference_llm(model_id):
         return jsonify({"error": "Missing JSON body"}), 400
 
     input_text = data.get("input")
-    temperature = data.get("temperature", 0.0)  # Default: 0.0
+    temperature = data.get("temperature", 0.5)  # Default: 0.0
     max_tokens = data.get("max_tokens", 1000)    # Default: 500
 
     if not input_text or not model_id:
@@ -551,7 +551,7 @@ def inference_llm_stream_proxy(model_id):
         return jsonify({"error": "Missing JSON body"}), 400
 
     input_text = data.get("input")
-    temperature = data.get("temperature", 0.0)
+    temperature = data.get("temperature", 0.5)
     max_tokens = data.get("max_tokens", 1000)
 
     if not input_text or not model_id:
