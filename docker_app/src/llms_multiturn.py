@@ -67,20 +67,6 @@ class FinetuneLMAgent:
         # convo_with_prompt = [{"role": "system", "content": self.system_prompt}] + convos
         texts = [self.tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos]
         return { "text" : texts, }
-        
-    # def formatting_prompts_func(self, examples):
-    #     convos = examples["messages"]
-    #     texts = []
-    #     for convo in convos:
-    #         updated_convo = [{"role": "system", "content": self.system_prompt}] + convo
-    #         conversation_text = self.tokenizer.apply_chat_template(
-    #             updated_convo,
-    #             tokenize=False,
-    #             add_generation_prompt=False
-    #         )
-    #         texts.append(conversation_text)
-    #     print(f"text: {texts}")
-    #     return {"text": texts}
 
     def run(self):
         if not self.data:  # Check if data is empty
@@ -123,7 +109,6 @@ class FinetuneLMAgent:
             max_seq_length=8192,
         )
         FastLanguageModel.for_training(self.model)
-
         trainer = SFTTrainer(
             model=self.model,
             tokenizer=self.tokenizer,
@@ -131,6 +116,5 @@ class FinetuneLMAgent:
             args=training_args,
             callbacks=[CustomLoggingCallback()]
         )
-
         trainer.train()
         

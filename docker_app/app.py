@@ -23,6 +23,7 @@ from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_vide
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
 from src.inference_llms_memory import run_inference_lm_memory
 from werkzeug.serving import WSGIRequestHandler
+from werkzeug.utils import secure_filename
 WSGIRequestHandler.protocol_version = "HTTP/1.1"
 
 app = Flask(__name__)
@@ -127,6 +128,14 @@ MODEL_HF_URL_LLM = {
 conversation_history = []
 SYSTEM_MESSAGE = """You are a helpful AI assistant. Please be clear and concise."""
 
+# RAGS
+RAGS_BASE_DIR = "src/rags"
+os.makedirs(os.path.join(RAGS_BASE_DIR, "pdf"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "csv"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "image_caption"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "image_tabular"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "pptx"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "video"), exist_ok=True)
 
 @app.route('/run_model', methods=['POST'])
 def run_model():
@@ -737,6 +746,108 @@ def get_video_inference_logs():
         return Response(content, mimetype='text/plain')
     else:
         return jsonify({"error": "No video inference log file found."}), 404
+    
+# RAGS
+@app.route('/upload_file', methods=['POST'])
+def upload_file():
+    file_type = request.form.get("type")
+    if 'file' in request.files:
+        f = request.files['file']
+        if f.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+        filename = secure_filename(f.filename)
+        subdir = None
+        if file_type in ["pdf", "txt"]:
+            subdir = "pdf"
+        elif file_type == "csv":
+            subdir = "csv"
+        elif file_type == "chartImage":
+            subdir = "image_tabular"
+        elif file_type == "imageOcr":
+            subdir = "image_caption"
+        elif file_type == "pptx":
+            subdir = "pptx"
+        elif file_type == "video":
+            subdir = "video"
+        else:
+            subdir = "pdf"
+
+        save_path = os.path.join(RAGS_BASE_DIR, subdir, filename)
+        f.save(save_path)
+
+        return jsonify({
+            "message": "File uploaded successfully",
+            "filename": filename,
+            "type": file_type,
+            "path": save_path
+        }), 200
+
+    website_url = request.form.get("website_url")
+    if website_url:
+        # Append to website.txt
+        txt_path = os.path.join(RAGS_BASE_DIR, "website.txt")
+        with open(txt_path, "a", encoding="utf-8") as w:
+            w.write(website_url.strip() + "\n")
+
+        return jsonify({
+            "message": "Website URL saved successfully",
+            "url": website_url
+        }), 200
+
+    return jsonify({"error": "No file or website URL provided"}), 400
+
+
+@app.route('/delete_rag_item', methods=['POST'])
+def delete_rag_item():
+    data = request.get_json() or {}
+    item_type = data.get("type")
+    name = data.get("name")
+
+    if not item_type or not name:
+        return jsonify({"error": "Missing type or name"}), 400
+
+    if item_type == "url":
+        txt_path = os.path.join(RAGS_BASE_DIR, "website.txt")
+        if not os.path.exists(txt_path):
+            return jsonify({"error": "website.txt not found"}), 404
+
+        updated_lines = []
+        removed_any = False
+        with open(txt_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip() == name.strip():
+                    removed_any = True
+                    continue
+                updated_lines.append(line)
+
+        if removed_any:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.writelines(updated_lines)
+            return jsonify({"message": f"URL '{name}' deleted."}), 200
+        else:
+            return jsonify({"error": f"URL '{name}' not found in file."}), 404
+    else:
+        if item_type in ["pdf", "txt"]:
+            subdir = "pdf"
+        elif item_type == "csv":
+            subdir = "csv"
+        elif item_type == "chartImage":
+            subdir = "image_tabular"
+        elif item_type == "imageOcr":
+            subdir = "image_caption"
+        elif item_type == "pptx":
+            subdir = "pptx"
+        elif item_type == "video":
+            subdir = "video"
+        else:
+            subdir = "pdf"
+
+        file_path = os.path.join(RAGS_BASE_DIR, subdir, name)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({"message": f"File '{name}' deleted from {subdir}."}), 200
+        else:
+            return jsonify({"error": f"File '{name}' not found on server."}), 404
 
 
 if __name__ == "__main__":
