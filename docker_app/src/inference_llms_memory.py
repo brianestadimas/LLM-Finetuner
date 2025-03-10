@@ -49,10 +49,10 @@ def format_data_inference(user_input, conversation_history, system_prompt):
     return formatted_prompt.strip()
 
 def build_retriever():
-    docs_local = SimpleDirectoryReader("./rags/pdf").load_data()
+    docs_local = SimpleDirectoryReader("./src/rags/pdf").load_data()
 
     websites = []
-    website_txt = "./rags/website.txt"
+    website_txt = "./src/rags/website.txt"
     if os.path.exists(website_txt):
         with open(website_txt, "r", encoding="utf-8") as f:
             websites = [line.strip() for line in f if line.strip()]
@@ -63,22 +63,22 @@ def build_retriever():
 
     image_caption_reader = ImageCaptionReader()
     docs_image_caption = []
-    for img_file in glob.glob("./rags/image_caption/*"):
+    for img_file in glob.glob("./src/rags/image_caption/*"):
         docs_image_caption.extend(image_caption_reader.load_data(img_file))
 
     image_tabular_reader = ImageTabularChartReader()
     docs_image_table = []
-    for chart_file in glob.glob("./rags/image_tabular/*"):
+    for chart_file in glob.glob("./src/rags/image_tabular/*"):
         docs_image_table.extend(image_tabular_reader.load_data(chart_file))
 
     pptx_reader = PptxReader()
     docs_pptx = []
-    for pptx_file in glob.glob("./rags/pptx/*.pptx"):
+    for pptx_file in glob.glob("./src/rags/pptx/*.pptx"):
         docs_pptx.extend(pptx_reader.load_data(pptx_file))
 
     csv_reader = CSVReader()
     docs_csv = []
-    for csv_file in glob.glob("./rags/csv/*.csv"):
+    for csv_file in glob.glob("./src/rags/csv/*.csv"):
         docs_csv.extend(csv_reader.load_data(file=Path(csv_file)))
 
     docs = (
