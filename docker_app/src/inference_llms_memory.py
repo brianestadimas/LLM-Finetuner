@@ -19,7 +19,7 @@ MODEL = None
 TOKENIZER = None
 RETRIEVER = None
 
-def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
+def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50):
     global MODEL, TOKENIZER, RETRIEVER
     # If already loaded, just return
     if MODEL is not None and TOKENIZER is not None:
@@ -37,7 +37,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
         model_name=model_name,
         load_in_4bit=False,
     )
-    retriever = build_retriever()
+    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     RETRIEVER = retriever
     MODEL = model
     TOKENIZER = tokenizer
@@ -53,7 +53,7 @@ def format_data_inference(user_input, conversation_history, system_prompt):
     )
     return formatted_prompt.strip()
 
-def build_retriever():
+def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50):
     # Load documents from various sources
     docs_local = SimpleDirectoryReader("./rags/pdf").load_data()
 
@@ -99,9 +99,9 @@ def build_retriever():
 
     # Text splitting configuration
     text_splitter = TokenTextSplitter(
-        separator=" ",
-        chunk_size=4096,
-        chunk_overlap=50,
+        separator=separator,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         backup_separators=["\n", "."]
     )
 

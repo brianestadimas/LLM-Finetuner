@@ -21,7 +21,7 @@ from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
-from src.inference_llms_memory import run_inference_lm_memory
+from src.inference_llms_memory import run_inference_lm_memory, initialize_model
 from werkzeug.serving import WSGIRequestHandler
 from werkzeug.utils import secure_filename
 WSGIRequestHandler.protocol_version = "HTTP/1.1"
@@ -417,6 +417,16 @@ def run_model_llm():
                 print("Optimizing model...")
                 print("This is running in a background process and can be closed.")
                 # olive_opt()
+                
+                if agent_flag:
+                    _,_,_ = initialize_model(
+                        model_id,
+                        checkpoint_root="./model_cp",
+                        separator=metadata.get("separator", " "),
+                        chunk_size=metadata.get("chunk_size", 4096), 
+                        chunk_overlap=metadata.get("chunk_overlap", 50)
+                    )
+                    
 
         finetune_thread = threading.Thread(target=finetune_task, args=(reconstructed_data, finetune_params))
         finetune_thread.start()
