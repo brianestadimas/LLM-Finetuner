@@ -11,7 +11,7 @@ from llama_index.readers.file.tabular import CSVReader
 from llama_index.core.settings import Settings
 from llama_index.core.node_parser import TokenTextSplitter
 from pathlib import Path
-import glob, os, json
+import glob, os, json, re
 from transformers import TextStreamer
 from src.utils import find_highest_checkpoint
 
@@ -19,7 +19,7 @@ MODEL = None
 TOKENIZER = None
 RETRIEVER = None
 
-def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50):
+def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
     global MODEL, TOKENIZER, RETRIEVER
     # If already loaded, just return
     if MODEL is not None and TOKENIZER is not None:
@@ -37,7 +37,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separat
         model_name=model_name,
         load_in_4bit=False,
     )
-    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap, replace_spaces=replace_spaces, delete_urls=delete_urls)
     RETRIEVER = retriever
     MODEL = model
     TOKENIZER = tokenizer
@@ -53,7 +53,7 @@ def format_data_inference(user_input, conversation_history, system_prompt):
     )
     return formatted_prompt.strip()
 
-def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50):
+def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
     # Load documents from various sources
     docs_local = SimpleDirectoryReader("./rags/pdf").load_data()
 
@@ -102,13 +102,19 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50):
         separator=separator,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        backup_separators=["\n", "."]
+        backup_separators=["\n", ".", " "]
     )
 
     # Split documents into chunks
     chunked_docs = []
     for doc in docs:
-        chunks = text_splitter.split_text(doc.text)
+        cleaned_text = apply_text_preprocessing(
+            doc.text,
+            replace_spaces=replace_spaces,
+            delete_urls=delete_urls
+        )
+        
+        chunks = text_splitter.split_text(cleaned_text)
         for i, chunk in enumerate(chunks):
             chunked_docs.append(Document(
                 text=chunk,
@@ -339,3 +345,21 @@ def run_inference_lm_memory(
     # Join partial answers with a blank line
     final_answer = "\n\n".join(all_responses)
     return final_answer, conversation_history
+
+
+def apply_text_preprocessing(text: str, replace_spaces: bool, delete_urls: bool) -> str:
+    """Apply text cleanup rules if requested."""
+    if replace_spaces:
+        # Replace consecutive whitespace (spaces, newlines, tabs) with a single space
+        text = re.sub(r"\s+", " ", text)
+
+    if delete_urls:
+        # Remove URLs, emails, etc. 
+        # For URLs, something like:
+        text = re.sub(r"https?://\S+|www\.\S+", "", text)
+        # For emails, if you want that too:
+        text = re.sub(r"\S+@\S+\.\S+", "", text)
+
+    # Optionally trim leading/trailing spaces
+    text = text.strip()
+    return text

@@ -424,7 +424,9 @@ def run_model_llm():
                         checkpoint_root="./model_cp",
                         separator=metadata.get("separator", " "),
                         chunk_size=metadata.get("chunk_size", 4096), 
-                        chunk_overlap=metadata.get("chunk_overlap", 50)
+                        chunk_overlap=metadata.get("chunk_overlap", 50),
+                        replace_spaces=metadata.get("replace_spaces", False),
+                        delete_urls=metadata.get("delete_urls", False),
                     )
                     
 
