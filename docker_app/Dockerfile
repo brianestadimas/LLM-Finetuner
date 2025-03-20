@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
 # Set the C compiler explicitly
 ENV CC=gcc
 
+RUN apt-get update && apt-get install -y tesseract-ocr
+
 # Copy requirements first for caching
 COPY requirements.txt .
 RUN pip install -r requirements.txt 

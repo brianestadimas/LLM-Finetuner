@@ -13,7 +13,9 @@ from llama_index.core.node_parser import TokenTextSplitter
 from pathlib import Path
 import glob, os, json, re
 from transformers import TextStreamer
+import pytesseract
 from src.utils import find_highest_checkpoint
+from PIL import Image
 
 MODEL = None
 TOKENIZER = None
@@ -55,10 +57,10 @@ def format_data_inference(user_input, conversation_history, system_prompt):
 
 def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
     # Load documents from various sources
-    docs_local = SimpleDirectoryReader("./rags/pdf").load_data()
+    docs_local = SimpleDirectoryReader("./src/rags/pdf").load_data()
 
     websites = []
-    website_txt = "./rags/website.txt"
+    website_txt = "./src/rags/website.txt"
     if os.path.exists(website_txt):
         with open(website_txt, "r", encoding="utf-8") as f:
             websites = [line.strip() for line in f if line.strip()]
@@ -67,24 +69,24 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     if websites:
         docs_url = SimpleWebPageReader().load_data(websites)
 
-    image_caption_reader = ImageCaptionReader()
     docs_image_caption = []
-    for img_file in glob.glob("./rags/image_caption/*"):
-        docs_image_caption.extend(image_caption_reader.load_data(img_file))
+    for img_path in glob.glob("./rags/image_caption/*"):
+        text = pytesseract.image_to_string(Image.open(img_path))
+        docs_image_caption.append(Document(text=text, metadata={"source": img_path}))
 
     image_tabular_reader = ImageTabularChartReader()
     docs_image_table = []
-    for chart_file in glob.glob("./rags/image_tabular/*"):
+    for chart_file in glob.glob("./src/rags/image_tabular/*"):
         docs_image_table.extend(image_tabular_reader.load_data(chart_file))
 
     pptx_reader = PptxReader()
     docs_pptx = []
-    for pptx_file in glob.glob("./rags/pptx/*.pptx"):
+    for pptx_file in glob.glob("./src/rags/pptx/*.pptx"):
         docs_pptx.extend(pptx_reader.load_data(pptx_file))
 
     csv_reader = CSVReader()
     docs_csv = []
-    for csv_file in glob.glob("./rags/csv/*.csv"):
+    for csv_file in glob.glob("./src/rags/csv/*.csv"):
         docs_csv.extend(csv_reader.load_data(file=Path(csv_file)))
 
     # Combine all documents
@@ -210,7 +212,7 @@ def run_inference_lm_memory_with_rag_single(
     return gen, conversation_history
 
 def parse_user_input_with_llm(user_input: str, model_id: str):
-    model, tokenizer = initialize_model(model_id)
+    model, tokenizer, retriever = initialize_model(model_id)
     FastLanguageModel.for_inference(model)
 
     system_prompt = (

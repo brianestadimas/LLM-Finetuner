@@ -381,6 +381,16 @@ def run_model_llm():
                     )
  
                 finetuner.run()
+                if agent_flag:
+                    _,_,_ = initialize_model(
+                        model_id=params["model_type"],
+                        checkpoint_root="./model_cp",
+                        separator=metadata.get("separator", " "),
+                        chunk_size=metadata.get("chunk_size", 4096), 
+                        chunk_overlap=metadata.get("chunk_overlap", 50),
+                        replace_spaces=metadata.get("replace_spaces", False),
+                        delete_urls=metadata.get("delete_urls", False),
+                    )
                 print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
 
@@ -407,7 +417,7 @@ def run_model_llm():
                 else:
                     print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
                 
-            finally:
+            finally:             
                 del finetuner
                 import gc
                 gc.collect()
@@ -417,17 +427,7 @@ def run_model_llm():
                 print("Optimizing model...")
                 print("This is running in a background process and can be closed.")
                 # olive_opt()
-                
-                if agent_flag:
-                    _,_,_ = initialize_model(
-                        model_id,
-                        checkpoint_root="./model_cp",
-                        separator=metadata.get("separator", " "),
-                        chunk_size=metadata.get("chunk_size", 4096), 
-                        chunk_overlap=metadata.get("chunk_overlap", 50),
-                        replace_spaces=metadata.get("replace_spaces", False),
-                        delete_urls=metadata.get("delete_urls", False),
-                    )
+
                     
 
         finetune_thread = threading.Thread(target=finetune_task, args=(reconstructed_data, finetune_params))
