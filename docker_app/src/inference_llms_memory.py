@@ -4,7 +4,6 @@ from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageCon
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.readers.web import SimpleWebPageReader
-from llama_index.readers.file.image_caption import ImageCaptionReader
 from llama_index.readers.file.image_deplot import ImageTabularChartReader
 from llama_index.readers.file.slides import PptxReader
 from llama_index.readers.file.tabular import CSVReader
@@ -13,9 +12,8 @@ from llama_index.core.node_parser import TokenTextSplitter
 from pathlib import Path
 import glob, os, json, re
 from transformers import TextStreamer
-import pytesseract
+import easyocr
 from src.utils import find_highest_checkpoint
-from PIL import Image
 
 MODEL = None
 TOKENIZER = None
@@ -57,7 +55,10 @@ def format_data_inference(user_input, conversation_history, system_prompt):
 
 def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
     # Load documents from various sources
-    docs_local = SimpleDirectoryReader("./src/rags/pdf").load_data()
+    try:
+        docs_local = SimpleDirectoryReader("./src/rags/pdf").load_data()
+    except:
+        docs_local = []
 
     websites = []
     website_txt = "./src/rags/website.txt"
@@ -69,10 +70,15 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     if websites:
         docs_url = SimpleWebPageReader().load_data(websites)
 
+    reader = easyocr.Reader(['en'], gpu=True)
     docs_image_caption = []
     for img_path in glob.glob("./rags/image_caption/*"):
-        text = pytesseract.image_to_string(Image.open(img_path))
-        docs_image_caption.append(Document(text=text, metadata={"source": img_path}))
+        result = reader.readtext(img_path)
+        recognized_lines = []
+        for (bbox, text, confidence) in result:
+            recognized_lines.append(text)
+        recognized_text = "\n".join(recognized_lines)
+        docs_image_caption.append(Document(text=recognized_text, metadata={"source": img_path}))
 
     image_tabular_reader = ImageTabularChartReader()
     docs_image_table = []
