@@ -73,7 +73,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
 
     reader = easyocr.Reader(['en'], gpu=True)
     docs_image_caption = []
-    for img_path in glob.glob("./rags/image_caption/*"):
+    for img_path in glob.glob("./src/rags/image_caption/*"):
         result = reader.readtext(img_path)
         recognized_lines = []
         for (bbox, text, confidence) in result:
@@ -111,7 +111,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         separator=separator,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        backup_separators=["\n", ".", " "]
+        backup_separators=["\n", "."]
     )
 
     # Split documents into chunks
@@ -299,7 +299,7 @@ def run_inference_lm_memory(
     if len(chunks) == 1:
         return run_inference_lm_memory_with_rag_single(
             model_id,
-            chunks[0],
+            user_input,
             conversation_history,
             system_prompt,
             model,
