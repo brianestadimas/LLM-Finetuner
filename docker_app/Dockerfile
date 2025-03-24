@@ -11,8 +11,7 @@ RUN apt-get update && apt-get install -y \
 
 # Set the C compiler explicitly
 ENV CC=gcc
-
-RUN apt-get update && apt-get install -y tesseract-ocr
+RUN mkdir -p /app/lancedb
 
 # Copy requirements first for caching
 COPY requirements.txt .
@@ -39,6 +38,11 @@ EXPOSE 5000
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=development
+ENV LANCEDB_URI ""
+ENV LANCEDB_API_KEY ""
+ENV LANCE_API_KEY ""
+ENV LANCE_URI ""
+RUN unset LANCE_API_KEY
 
 # Use flask run to enable debugging
 CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--debug"]

@@ -4,6 +4,7 @@ from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageCon
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.readers.web import SimpleWebPageReader
+from llama_index.readers.file.image_caption import ImageCaptionReader
 from llama_index.readers.file.image_deplot import ImageTabularChartReader
 from llama_index.readers.file.slides import PptxReader
 from llama_index.readers.file.tabular import CSVReader
