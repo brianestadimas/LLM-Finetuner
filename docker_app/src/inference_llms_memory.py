@@ -1,4 +1,4 @@
-from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel, FastVisionModel
 from transformers import TextStreamer
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext, Document
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
@@ -12,9 +12,9 @@ from llama_index.core.settings import Settings
 from llama_index.core.node_parser import TokenTextSplitter
 from pathlib import Path
 import glob, os, json, re
-from transformers import TextStreamer
-import easyocr
 from src.utils import find_highest_checkpoint
+from PIL import Image
+import torch
 
 MODEL = None
 TOKENIZER = None
@@ -71,15 +71,52 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     if websites:
         docs_url = SimpleWebPageReader().load_data(websites)
 
-    reader = easyocr.Reader(['en'], gpu=True)
-    docs_image_caption = []
-    for img_path in glob.glob("./src/rags/image_caption/*"):
-        result = reader.readtext(img_path)
-        recognized_lines = []
-        for (bbox, text, confidence) in result:
-            recognized_lines.append(text)
-        recognized_text = "\n".join(recognized_lines)
-        docs_image_caption.append(Document(text=recognized_text, metadata={"source": img_path}))
+    model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
+    model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
+    FastVisionModel.for_inference(model)
+    
+    def extract_image_docs(folder, prompt_text):
+        docs = []
+        for path in glob.glob(f"{folder}/*"):
+            image = Image.open(path).convert("RGB")
+            messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
+            prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+            inputs = tokenizer(image, prompt, add_special_tokens=False, return_tensors="pt").to("cuda")
+            with torch.no_grad():
+                output_ids = model.generate(
+                    **inputs, max_new_tokens=2048, temperature=0.0,
+                    do_sample=False, min_p=0.1, use_cache=True
+                )
+            result = tokenizer.decode(
+                output_ids[:, inputs["input_ids"].shape[1]:][0],
+                skip_special_tokens=True, clean_up_tokenization_spaces=False
+            ).strip()
+            docs.append(Document(text=result, metadata={"source": path}))
+        return docs
+
+    docs_image_caption = extract_image_docs(
+        "./src/rags/image_caption",
+        "Please extract all the text from this image, as detail as possible."
+    )
+    
+    docs_image_description = extract_image_docs(
+        "./src/rags/image_desc",
+        "Describe the image as detail as possible."
+    )
+
+    docs_image_table = extract_image_docs(
+        "./src/rags/image_tabular",
+        "Please extract all tabular or chart information from this image (also small description what is chart/tabular about), as detailed and structured as possible including numbers if available."
+    )
+
+    model = model.cpu()
+    model = None
+    del model
+    del tokenizer
+    with torch.no_grad():
+        torch.cuda.empty_cache()
+    import gc
+    gc.collect()
 
     image_tabular_reader = ImageTabularChartReader()
     docs_image_table = []
@@ -101,6 +138,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         docs_local
         + docs_url
         + docs_image_caption
+        + docs_image_description
         + docs_image_table
         + docs_pptx
         + docs_csv

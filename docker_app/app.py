@@ -135,7 +135,7 @@ os.makedirs(os.path.join(RAGS_BASE_DIR, "csv"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "image_caption"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "image_tabular"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "pptx"), exist_ok=True)
-os.makedirs(os.path.join(RAGS_BASE_DIR, "video"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "image_desc"), exist_ok=True)
 
 @app.route('/run_model', methods=['POST'])
 def run_model():
@@ -779,8 +779,8 @@ def upload_file():
             subdir = "image_caption"
         elif file_type == "pptx":
             subdir = "pptx"
-        elif file_type == "video":
-            subdir = "video"
+        elif file_type == "imageDesc":
+            subdir = "image_desc"
         else:
             subdir = "pdf"
 
