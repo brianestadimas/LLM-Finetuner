@@ -62,7 +62,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         docs_local = []
 
     websites = []
-    website_txt = "./rags/website.txt"
+    website_txt = "./src/rags/website.txt"
     if os.path.exists(website_txt):
         with open(website_txt, "r", encoding="utf-8") as f:
             websites = [line.strip() for line in f if line.strip()]
@@ -189,8 +189,8 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     sc = StorageContext.from_defaults(vector_store=vs)
     
     # Embedding model
-    embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
-    # embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
+    # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
+    embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
     
     # Service context with text splitter
     Settings.embed_model = embed_model
