@@ -849,8 +849,8 @@ def delete_rag_item():
             subdir = "image_caption"
         elif item_type == "pptx":
             subdir = "pptx"
-        elif item_type == "video":
-            subdir = "video"
+        elif item_type == "imageDesc":
+            subdir = "image_desc"
         else:
             subdir = "pdf"
 

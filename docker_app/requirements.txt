@@ -5,7 +5,7 @@ tqdm==4.67.1
 # torchvision==0.16.2+cu121
 torchvision
 torch==2.6.0
-transformers
+transformers==4.49.0
 peft==0.14.0
 pandas==2.2.3
 Pillow==11.1.0
@@ -13,9 +13,10 @@ bitsandbytes==0.45.0
 onnxruntime==1.20.1
 onnxruntime-genai==0.5.2
 optimum
-unsloth
+unsloth==2025.3.8
+unsloth_zoo==2025.3.7
 xformers
-qwen-vl-utils
+qwen-vl-utils==0.0.10
 lancedb==0.20.0
 llama-index==0.12.22
 llama-index-vector-stores-lancedb==0.3.0

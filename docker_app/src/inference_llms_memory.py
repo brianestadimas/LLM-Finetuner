@@ -3,9 +3,6 @@ from transformers import TextStreamer
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext, Document
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.readers.web import SimpleWebPageReader
-from llama_index.readers.file.image_caption import ImageCaptionReader
-from llama_index.readers.file.image_deplot import ImageTabularChartReader
 from llama_index.readers.file.slides import PptxReader
 from llama_index.readers.file.tabular import CSVReader
 from llama_index.core.settings import Settings
@@ -15,6 +12,8 @@ import glob, os, json, re
 from src.utils import find_highest_checkpoint
 from PIL import Image
 import torch
+import requests
+from bs4 import BeautifulSoup
 
 MODEL = None
 TOKENIZER = None
@@ -33,12 +32,13 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separat
     except:
         model_name = model_id
 
+    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap, replace_spaces=replace_spaces, delete_urls=delete_urls)
+
     print(f"Loading model from: {model_name}")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
         load_in_4bit=False,
     )
-    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap, replace_spaces=replace_spaces, delete_urls=delete_urls)
     RETRIEVER = retriever
     MODEL = model
     TOKENIZER = tokenizer
@@ -62,14 +62,31 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         docs_local = []
 
     websites = []
-    website_txt = "./src/rags/website.txt"
+    website_txt = "./rags/website.txt"
     if os.path.exists(website_txt):
         with open(website_txt, "r", encoding="utf-8") as f:
             websites = [line.strip() for line in f if line.strip()]
 
     docs_url = []
     if websites:
-        docs_url = SimpleWebPageReader().load_data(websites)
+        for url in websites:
+            try:
+                headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/122.0.0.0 Safari/537.36"
+                    )
+                }
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    text = soup.get_text(separator="\n", strip=True)
+                    docs_url.append(Document(text=text, metadata={"source": url}))
+                else:
+                    print(f"Failed to fetch {url} - Status: {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching {url}: {e}")
 
     model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
     model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
@@ -101,7 +118,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     
     docs_image_description = extract_image_docs(
         "./src/rags/image_desc",
-        "Describe the image as detail as possible."
+        "Describe the image in detail."
     )
 
     docs_image_table = extract_image_docs(
@@ -117,11 +134,6 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         torch.cuda.empty_cache()
     import gc
     gc.collect()
-
-    image_tabular_reader = ImageTabularChartReader()
-    docs_image_table = []
-    for chart_file in glob.glob("./src/rags/image_tabular/*"):
-        docs_image_table.extend(image_tabular_reader.load_data(chart_file))
 
     pptx_reader = PptxReader()
     docs_pptx = []
