@@ -1,4 +1,5 @@
 from unsloth import FastLanguageModel, FastVisionModel
+from pdf2image import convert_from_path
 from transformers import TextStreamer
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext, Document
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
@@ -110,6 +111,31 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
             ).strip()
             docs.append(Document(text=result, metadata={"source": path}))
         return docs
+    
+    def extract_pdf_ocr_docs(folder, prompt_text):
+        all_docs = []
+        for pdf_path in glob.glob(f"{folder}/*.pdf"):
+            try:
+                pages = convert_from_path(pdf_path)  # Convert PDF to list of PIL pages
+            except Exception as e:
+                print(f"Failed to convert {pdf_path}: {e}")
+                continue
+
+            for i, page_img in enumerate(pages):
+                page_img = page_img.convert("RGB")
+                # Build the prompt
+                msg = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
+                prompt = tokenizer.apply_chat_template(msg, add_generation_prompt=True)
+                inputs = tokenizer(page_img, prompt, add_special_tokens=False, return_tensors="pt").to("cuda")
+                with torch.no_grad():
+                    out_ids = model.generate(**inputs, max_new_tokens=2048, temperature=0.0, do_sample=False, min_p=0.1)
+                text = tokenizer.decode(
+                    out_ids[:, inputs["input_ids"].shape[1]:][0],
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False
+                ).strip()
+                all_docs.append(Document(text=text, metadata={"source": pdf_path, "page": i}))
+        return all_docs
 
     docs_image_caption = extract_image_docs(
         "./src/rags/image_caption",
@@ -124,6 +150,11 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     docs_image_table = extract_image_docs(
         "./src/rags/image_tabular",
         "Please extract all tabular or chart information from this image (also small description what is chart/tabular about), as detailed and structured as possible including numbers if available."
+    )
+    
+    docs_pdf_ocr = extract_pdf_ocr_docs(
+        "./src/rags/pdf_ocr",
+        "Please extract all text and tabular or chart from this PDF page. Be as thorough as possible, including numbers or headings."
     )
 
     model = model.cpu()
@@ -148,6 +179,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     # Combine all documents
     docs = (
         docs_local
+        + docs_pdf_ocr
         + docs_url
         + docs_image_caption
         + docs_image_description
@@ -189,8 +221,8 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     sc = StorageContext.from_defaults(vector_store=vs)
     
     # Embedding model
-    # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
-    embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
+    embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
+    # embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
     
     # Service context with text splitter
     Settings.embed_model = embed_model

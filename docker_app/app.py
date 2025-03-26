@@ -133,6 +133,7 @@ RAGS_BASE_DIR = "src/rags"
 os.makedirs(os.path.join(RAGS_BASE_DIR, "pdf"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "csv"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "image_caption"), exist_ok=True)
+os.makedirs(os.path.join(RAGS_BASE_DIR, "pdf_ocr"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "image_tabular"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "pptx"), exist_ok=True)
 os.makedirs(os.path.join(RAGS_BASE_DIR, "image_desc"), exist_ok=True)
@@ -781,6 +782,8 @@ def upload_file():
             subdir = "pptx"
         elif file_type == "imageDesc":
             subdir = "image_desc"
+        elif file_type == "pdfOcr":
+            subdir = "pdf_ocr"
         else:
             subdir = "pdf"
 
@@ -851,6 +854,8 @@ def delete_rag_item():
             subdir = "pptx"
         elif item_type == "imageDesc":
             subdir = "image_desc"
+        elif item_type == "pdfOcr":
+            subdir = "pdf_ocr"
         else:
             subdir = "pdf"
 

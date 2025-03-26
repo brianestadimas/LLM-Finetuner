@@ -26,3 +26,4 @@ llama-index-readers-file==0.4.5
 python-pptx
 selenium
 webdriver-manager
+pdf2image
