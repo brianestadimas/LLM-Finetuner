@@ -16,6 +16,7 @@ import torch
 import requests
 from bs4 import BeautifulSoup
 
+log_file_path = "model_logs.txt"
 MODEL = None
 TOKENIZER = None
 RETRIEVER = None
@@ -118,11 +119,23 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
             try:
                 pages = convert_from_path(pdf_path)  # Convert PDF to list of PIL pages
             except Exception as e:
-                print(f"Failed to convert {pdf_path}: {e}")
+                with open(log_file_path, "a", encoding="utf-8") as log_file:
+                    log_file.write(f"Failed to convert {pdf_path}: {e}")
                 continue
 
+            output_dir = Path("./src/output")
+            pdf_name = Path(pdf_path).stem
             for i, page_img in enumerate(pages):
+                with open(log_file_path, "a", encoding="utf-8") as log_file:
+                    log_file.write(f"Processing OCR on page {i}, {pdf_path}\n")
                 page_img = page_img.convert("RGB")
+                page_img = page_img.resize(
+                    (page_img.width // 2, page_img.height // 2),
+                    resample=Image.LANCZOS
+                )
+                
+                image_path = output_dir / f"{pdf_name}_page_{i}.png"
+                page_img.save(image_path)
                 # Build the prompt
                 msg = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
                 prompt = tokenizer.apply_chat_template(msg, add_generation_prompt=True)
@@ -154,7 +167,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     
     docs_pdf_ocr = extract_pdf_ocr_docs(
         "./src/rags/pdf_ocr",
-        "Please extract all text and tabular or chart from this PDF page. Be as thorough as possible, including numbers or headings."
+        "Please extract all text and tabular/chart from this screenshot page, as detailed and structured as possible including numbers if available."
     )
 
     model = model.cpu()
