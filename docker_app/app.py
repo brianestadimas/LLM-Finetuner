@@ -82,6 +82,7 @@ MODEL_HF_URL = {
 
 MODEL_HF_URL_LLM = {
     "Phi-3.5-mini": "unsloth/Phi-3.5-mini-instruct",
+    "Qwen2.5-32B": "unsloth/Qwen2.5-32B-Instruct",
     "Qwen2.5-7B": "unsloth/Qwen2.5-7B-Instruct",
     "Qwen2.5-3B": "unsloth/Qwen2.5-3B-Instruct",
     "Qwen2.5-1.5B": "unsloth/Qwen2.5-1.5B-Instruct",

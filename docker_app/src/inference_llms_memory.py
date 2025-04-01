@@ -15,6 +15,14 @@ from PIL import Image
 import torch
 import requests
 from bs4 import BeautifulSoup
+import csv
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+
 
 log_file_path = "model_logs.txt"
 MODEL = None
@@ -39,7 +47,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separat
     print(f"Loading model from: {model_name}")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
-        load_in_4bit=False,
+        load_in_4bit=True,
     )
     RETRIEVER = retriever
     MODEL = model
@@ -56,13 +64,71 @@ def format_data_inference(user_input, conversation_history, system_prompt):
     )
     return formatted_prompt.strip()
 
+def load_big_csv_in_chunks(file_path, rows_per_chunk=1000):
+    """
+    Read the CSV in row batches. For each batch, produce one Document.
+    E.g., if you have 200k rows, you'll get ~200 chunks.
+    """
+    docs = []
+    chunk_index = 0
+    row_count = 0
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)  # If there's a header
+        batch = []
+
+        for row in reader:
+            batch.append(row)
+            row_count += 1
+
+            # If batch hits the limit, log and create a new Document
+            if len(batch) >= rows_per_chunk:
+                # Log the chunk
+                with open(log_file_path, "a", encoding="utf-8") as log_file:
+                    log_file.write(
+                        f"Processing CSV chunk #{chunk_index} for file {file_path}: "
+                        f"rows {row_count - len(batch) + 1} to {row_count}\n"
+                    )
+
+                text = convert_rows_to_text(header, batch)
+                docs.append(Document(text=text, metadata={"source": file_path}))
+
+                chunk_index += 1
+                batch = []
+
+        # leftover rows if batch is not empty
+        if batch:
+            with open(log_file_path, "a", encoding="utf-8") as log_file:
+                log_file.write(
+                    f"Processing FINAL CSV chunk #{chunk_index} for file {file_path}: "
+                    f"rows {row_count - len(batch) + 1} to {row_count}\n"
+                )
+            text = convert_rows_to_text(header, batch)
+            docs.append(Document(text=text, metadata={"source": file_path}))
+
+    return docs
+
+def convert_rows_to_text(header, rows):
+    """
+    Turn the chunk of CSV rows into a single string.
+    This is your chance to summarize or just join them.
+    """
+    lines = []
+    if header:
+        lines.append(",".join(header))
+    for r in rows:
+        lines.append(",".join(r))
+    return "\n".join(lines)
+
 def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
     # Load documents from various sources
     try:
+        # Replace SimpleDirectoryReader with our Poppler-based loader
         docs_local = SimpleDirectoryReader("./src/rags/pdf").load_data()
     except:
         docs_local = []
 
+    
     websites = []
     website_txt = "./src/rags/website.txt"
     if os.path.exists(website_txt):
@@ -71,24 +137,31 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
 
     docs_url = []
     if websites:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Optional: remove for visible browser
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920x1080")
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
         for url in websites:
             try:
-                headers = {
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/122.0.0.0 Safari/537.36"
-                    )
-                }
-                response = requests.get(url, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, "html.parser")
-                    text = soup.get_text(separator="\n", strip=True)
+                driver.get(url)
+                time.sleep(5)  # give the page time to load
+
+                # Grab all visible text
+                body = driver.find_element(By.TAG_NAME, "body")
+                text = body.text.strip()
+                if text:
                     docs_url.append(Document(text=text, metadata={"source": url}))
-                else:
-                    print(f"Failed to fetch {url} - Status: {response.status_code}")
             except Exception as e:
-                print(f"Error fetching {url}: {e}")
+                print(f"Selenium failed to load {url}: {e}")
+
+        driver.quit()
+
 
     model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
     model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
@@ -123,8 +196,6 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
                     log_file.write(f"Failed to convert {pdf_path}: {e}")
                 continue
 
-            output_dir = Path("./src/output")
-            pdf_name = Path(pdf_path).stem
             for i, page_img in enumerate(pages):
                 with open(log_file_path, "a", encoding="utf-8") as log_file:
                     log_file.write(f"Processing OCR on page {i}, {pdf_path}\n")
@@ -134,8 +205,6 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
                     resample=Image.LANCZOS
                 )
                 
-                image_path = output_dir / f"{pdf_name}_page_{i}.png"
-                page_img.save(image_path)
                 # Build the prompt
                 msg = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
                 prompt = tokenizer.apply_chat_template(msg, add_generation_prompt=True)
@@ -167,7 +236,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     
     docs_pdf_ocr = extract_pdf_ocr_docs(
         "./src/rags/pdf_ocr",
-        "Please extract all text and tabular/chart from this screenshot page, as detailed and structured as possible including numbers if available."
+        "Please extract all text and tabular/chart from this screenshot page, as detailed and structured as possible including numbers if available. Pay close attention to the layout and positioning: preserve the top-to-bottom and left-to-right reading order as it appears visually. For tables, clearly align each value with the correct row and column headers. Include numerical data accurately and structure the output in a readable format such as markdown tables or clearly separated sections."
     )
 
     model = model.cpu()
@@ -184,10 +253,9 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     for pptx_file in glob.glob("./src/rags/pptx/*.pptx"):
         docs_pptx.extend(pptx_reader.load_data(pptx_file))
 
-    csv_reader = CSVReader()
     docs_csv = []
     for csv_file in glob.glob("./src/rags/csv/*.csv"):
-        docs_csv.extend(csv_reader.load_data(file=Path(csv_file)))
+        docs_csv.extend(load_big_csv_in_chunks(csv_file, rows_per_chunk=2000))
 
     # Combine all documents
     docs = (
@@ -234,8 +302,16 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     sc = StorageContext.from_defaults(vector_store=vs)
     
     # Embedding model
-    embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
+    # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
     # embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
+    embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
+    # embed_model = HuggingFaceEmbedding(
+    #     model_name="Linq-AI-Research/Linq-Embed-Mistral",
+    #     device="cuda",
+    #     trust_remote_code=True,
+    #     model_kwargs={"load_in_4bit": True}
+    # )
+
     
     # Service context with text splitter
     Settings.embed_model = embed_model
