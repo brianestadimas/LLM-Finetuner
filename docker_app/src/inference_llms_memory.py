@@ -13,8 +13,8 @@ import glob, os, json, re
 from src.utils import find_highest_checkpoint
 from PIL import Image
 import torch
-import requests
-from bs4 import BeautifulSoup
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import csv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -138,6 +138,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     docs_url = []
     if websites:
         chrome_options = Options()
+        chrome_options.binary_location = "/usr/bin/google-chrome"
         chrome_options.add_argument("--headless")  # Optional: remove for visible browser
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -148,20 +149,32 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
         for url in websites:
-            try:
-                driver.get(url)
-                time.sleep(5)  # give the page time to load
+            # Remove any trailing slash
+            url = url.rstrip('/')
+            success = False
+            attempts = 0
+            max_attempts = 3
 
-                # Grab all visible text
-                body = driver.find_element(By.TAG_NAME, "body")
-                text = body.text.strip()
-                if text:
-                    docs_url.append(Document(text=text, metadata={"source": url}))
-            except Exception as e:
-                print(f"Selenium failed to load {url}: {e}")
+            while not success and attempts < max_attempts:
+                attempts += 1
+                try:
+                    driver.get(url)
+                    # Wait until the body element is present (up to 10 seconds)
+                    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                    body = driver.find_element(By.TAG_NAME, "body")
+                    text = body.text.strip()
+                    if text:
+                        docs_url.append(Document(text=text, metadata={"source": url}))
+                    success = True
+                except Exception as e:
+                    print(f"Attempt {attempts} failed to load {url}: {e}")
+                    if attempts < max_attempts:
+                        time.sleep(2)  # Wait 2 seconds before retrying
+
+            if not success:
+                print(f"Failed to load {url} after {max_attempts} attempts.")
 
         driver.quit()
-
 
     model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
     model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)

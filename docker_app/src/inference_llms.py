@@ -30,7 +30,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp"):
     print(f"Loading model from: {model_name}")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
-        load_in_4bit=False,
+        load_in_4bit=True,
     )
     
     MODEL = model

@@ -44,7 +44,7 @@ class FinetuneLMAgent:
 
         self.base_model, self.tokenizer = FastLanguageModel.from_pretrained(
             model_name=model_id,
-            load_in_4bit=False,
+            load_in_4bit=True,
             use_gradient_checkpointing=False,
         )
 
