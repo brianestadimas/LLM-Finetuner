@@ -81,6 +81,10 @@ MODEL_HF_URL = {
 }
 
 MODEL_HF_URL_LLM = {
+    # Update 02-04-2025
+    "Gemma-3-12B": "unsloth/gemma-3-12b-it",
+    
+    # Base Models
     "Phi-3.5-mini": "unsloth/Phi-3.5-mini-instruct",
     "Qwen2.5-32B": "unsloth/Qwen2.5-32B-Instruct",
     "Qwen2.5-7B": "unsloth/Qwen2.5-7B-Instruct",

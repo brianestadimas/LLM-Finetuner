@@ -55,7 +55,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separat
     return MODEL, TOKENIZER, retriever
 
 def format_data_inference(user_input, conversation_history, system_prompt):
-    recent_history = conversation_history[-10:]
+    recent_history = conversation_history[-6:]
     conversation = [{"role": "system", "content": system_prompt}]
     conversation.extend(recent_history)
     conversation.append({"role": "user", "content": user_input})
@@ -249,8 +249,20 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     
     docs_pdf_ocr = extract_pdf_ocr_docs(
         "./src/rags/pdf_ocr",
-        "Please extract all text and tabular/chart from this screenshot page, as detailed and structured as possible including numbers if available. Pay close attention to the layout and positioning: preserve the top-to-bottom and left-to-right reading order as it appears visually. For tables, clearly align each value with the correct row and column headers. Include numerical data accurately and structure the output in a readable format such as markdown tables or clearly separated sections."
+        """You are an OCR tool. Your task is to extract and structure the content of this page into two separate sections:
+1. Original Context:
+Extract all visible text, chart, and numbers exactly as they appear on the page. Do not summarize or interpret. Preserve the original reading order and formatting.
+2. Layout Description:
+Describe the layout, chart positioning with it numbers, and structure of the page. Include information on:
+- Be extra careful with statistics numbers, dont mix up
+- Table positions, rows, and columns (be careful with numbers)
+- Chart types, legends, axes, and color usage
+- The relative placement of key sections (top-left, center, footer, etc.)
+- Any coloring used to differentiate groups or emphasize data
+
+Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page and describe the layout objectively."""
     )
+
 
     model = model.cpu()
     model = None
@@ -266,9 +278,10 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     for pptx_file in glob.glob("./src/rags/pptx/*.pptx"):
         docs_pptx.extend(pptx_reader.load_data(pptx_file))
 
+    csv_reader = CSVReader()
     docs_csv = []
     for csv_file in glob.glob("./src/rags/csv/*.csv"):
-        docs_csv.extend(load_big_csv_in_chunks(csv_file, rows_per_chunk=2000))
+        docs_csv.extend(csv_reader.load_data(file=Path(csv_file)))
 
     # Combine all documents
     docs = (
@@ -315,9 +328,9 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     sc = StorageContext.from_defaults(vector_store=vs)
     
     # Embedding model
-    # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
+    embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
     # embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
-    embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
+    # embed_model = HuggingFaceEmbedding(model_name="intfloat/multilingual-e5-large", device="cuda")
     # embed_model = HuggingFaceEmbedding(
     #     model_name="Linq-AI-Research/Linq-Embed-Mistral",
     #     device="cuda",
@@ -337,7 +350,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     )
     return index.as_retriever()
 
-def retrieve_context(user_input, retriever, top_k=3):
+def retrieve_context(user_input, retriever, top_k=2):
     # ---- Simple sanitization to avoid LanceDB FTS syntax errors ----
     sanitized_input = user_input.replace('"', '').replace(',', ' ')
     
@@ -364,7 +377,7 @@ def run_inference_lm_memory_with_rag_single(
         f"{system_prompt}\n"
         f"User request:\n{user_input}\n"
         f"Here is some relevant retrieved context:\n{retrieved}\n\n"
-        f"Please use this context to respond accurately.\n"
+        f"Please use this context to respond accurately and try to be strict/objective.\n"
     )
     
     # Format prompt with conversation history
@@ -496,13 +509,13 @@ def run_inference_lm_memory(
     for chunk in chunks:
         # -- same sanitization to avoid quotes in LanceDB query
         sanitized_chunk = chunk.replace('"', '').replace(',', ' ')
-        retrieved = retrieve_context(sanitized_chunk, retriever, top_k=3)
+        retrieved = retrieve_context(sanitized_chunk, retriever)
         
         rag_prompt = (
             f"{system_prompt}\n"
             f"User request:\n{chunk}\n"
             f"Here is some relevant retrieved context:\n{retrieved}\n\n"
-            f"Please use this context to respond accurately.\n"
+            f"Please use this context to respond accurately and try to be strict/objective.\n"
         )
         
         prompt = format_data_inference(chunk, conversation_history, rag_prompt)
@@ -556,3 +569,64 @@ def apply_text_preprocessing(text: str, replace_spaces: bool, delete_urls: bool)
     # Optionally trim leading/trailing spaces
     text = text.strip()
     return text
+
+if __name__ == "__main__":
+    conversation_history = []
+    model_nm = "unsloth/Qwen2.5-7B-Instruct"
+    system_prompt = (
+        "You are an AI assistant with knowledge of retrieved documents. "
+        "Always answer in detail using the retrieved context, straightforward, and do not hallucinate."
+    )
+
+    prompts = [
+        "Top 3 key support required to encourage ESG 1.0 and 2.0 implementation for each",
+        "REPORT INITIATORS",
+        "Key Questions Addressed In The ESG 2.0 Report",
+        "KEY FINDINGS",
+        "FAROZE NADAR",
+        "General ESG 1.0 and 2.0 adoption level. please provide overall only",
+        "Top 3 challenges when adopting ESG 1.0 and 2.0 for each",
+        "Top 3 key support required to encourage ESG implementation",
+        "General ESG Awareness Level for service sector",
+        "SME ESG Hub",
+        "Overall ESG Adoption By Sectors",
+        "Key Reasons For Adopters To Implement ESG",
+        "Key Motivations For Non-ESG Adopters To Implement ESG",
+        "What is input appellant for case 01(i)-17-05/2022(W)",
+        "What is iGain",
+        "What is Umrah Saving account",
+        "What is Umrah saving account profit rate",
+
+        # Malay versions
+        # "3 sokongan utama yang diperlukan untuk menggalakkan pelaksanaan ESG 1.0 dan 2.0",
+        # "PENCETUS LAPORAN",
+        # "Soalan Utama Yang Dijawab Dalam Laporan ESG 2.0",
+        # "PENEMUAN UTAMA",
+        # "FAROZE NADAR",
+        # "Tahap penerimaan ESG 1.0 dan 2.0 secara umum. Sila berikan secara keseluruhan sahaja",
+        # "3 cabaran utama dalam mengamalkan ESG",
+        # "3 sokongan utama yang diperlukan untuk menggalakkan pelaksanaan ESG",
+        # "Tahap Kesedaran ESG Umum bagi sektor perkhidmatan",
+        # "Hab ESG PKS",
+        # "Tahap Penerimaan ESG Secara Keseluruhan Mengikut Sektor",
+        # "Sebab Utama Penerima Mengamalkan ESG",
+        # "Motivasi Utama Bagi Bukan Penerima ESG Untuk Mengamalkan ESG",
+        # "Apakah input perayu bagi kes 01(i)-17-05/2022(W)",
+        # "Apakah itu iGain",
+        # "Apakah Akaun Simpanan Umrah",
+        # "Apakah kadar keuntungan akaun simpanan Umrah"
+    ]
+
+
+    for user_input_b in prompts:
+        answer_b, conversation_history = run_inference_lm_memory(
+            model_nm,
+            user_input_b,
+            conversation_history,
+            system_prompt=system_prompt,
+            temperature=0.2,
+            max_tokens=600
+        )
+        print("\n====================")
+        print(user_input_b)
+        print(answer_b)
