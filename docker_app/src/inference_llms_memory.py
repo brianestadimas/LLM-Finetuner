@@ -247,20 +247,24 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         "Please extract all tabular or chart information from this image (also small description what is chart/tabular about), as detailed and structured as possible including numbers if available."
     )
     
+#     docs_pdf_ocr = extract_pdf_ocr_docs(
+#         "./src/rags/pdf_ocr",
+#         """You are an OCR tool. Your task is to extract and structure the content of this page into two separate sections:
+# 1. Original Context:
+# Extract all visible text, chart, and numbers exactly as they appear on the page. Do not summarize or interpret. Preserve the original reading order and formatting.
+# 2. Layout Description:
+# Describe the layout, chart positioning with it numbers, and structure of the page. Include information on:
+# - Be extra careful with statistics numbers, dont mix up
+# - Table positions, rows, and columns (be careful with numbers)
+# - Chart types, legends, axes, and color usage
+# - The relative placement of key sections (top-left, center, footer, etc.)
+# - Any coloring used to differentiate groups or emphasize data
+
+# Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page and describe the layout objectively."""
+#     )
     docs_pdf_ocr = extract_pdf_ocr_docs(
         "./src/rags/pdf_ocr",
-        """You are an OCR tool. Your task is to extract and structure the content of this page into two separate sections:
-1. Original Context:
-Extract all visible text, chart, and numbers exactly as they appear on the page. Do not summarize or interpret. Preserve the original reading order and formatting.
-2. Layout Description:
-Describe the layout, chart positioning with it numbers, and structure of the page. Include information on:
-- Be extra careful with statistics numbers, dont mix up
-- Table positions, rows, and columns (be careful with numbers)
-- Chart types, legends, axes, and color usage
-- The relative placement of key sections (top-left, center, footer, etc.)
-- Any coloring used to differentiate groups or emphasize data
-
-Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page and describe the layout objectively."""
+        "Please extract all text and tabular/chart from this screenshot page, as detailed and structured as possible including numbers if available."
     )
 
 
