@@ -15,6 +15,8 @@ onnxruntime-genai==0.5.2
 optimum
 unsloth==2025.3.8
 unsloth_zoo==2025.3.7
+unsloth
+unsloth_zoo
 xformers
 qwen-vl-utils==0.0.10
 lancedb==0.20.0
@@ -27,3 +29,5 @@ python-pptx
 selenium
 webdriver-manager
 pdf2image
+beautifulsoup4
+requests

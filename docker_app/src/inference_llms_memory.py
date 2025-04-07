@@ -9,25 +9,75 @@ from llama_index.readers.file.tabular import CSVReader
 from llama_index.core.settings import Settings
 from llama_index.core.node_parser import TokenTextSplitter
 from pathlib import Path
-import glob, os, json, re
-from src.utils import find_highest_checkpoint
+import glob, os, json, re, shutil, time, csv, torch
+from src.utils import find_highest_checkpoint, folder_has_files
 from PIL import Image
-import torch
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import csv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
-import time
-
 
 log_file_path = "model_logs.txt"
 MODEL = None
 TOKENIZER = None
 RETRIEVER = None
+
+PDF_OCR_PROMPT_TEXT = (
+"""You are an OCR tool. Your task is to extract and structure the content of this page into two separate sections:
+1. Original Context:
+Extract all visible text, chart, and numbers exactly as they appear on the page. Do not summarize or interpret. Preserve the original reading order and formatting.
+2. Layout Description:
+Describe the layout, chart positioning with it numbers, and structure of the page. Include information on:
+- Be extra careful with statistics numbers, dont mix up
+- Table positions, rows, and columns (be careful with numbers)
+- Chart types, legends, axes, and color usage
+- The relative placement of key sections (top-left, center, footer, etc.)
+- Any coloring used to differentiate groups or emphasize data
+
+Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page and describe the layout objectively."""
+)
+
+"Describe the image in detail."
+
+IMAGE_OCR_PROMPT_TEXT = (
+"""You are an OCR tool for image/form. Your task is to extract and structure the content of the image, extract all text, including handwritten text, filled in text, numbers, and text inside boxes.
+Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page in RAW. Be extra careful with text inside boxes, especially if color is gray"""
+)
+
+CHART_OCR_PROMPT_TEXT = (
+"""You are an OCR tool. Your task is to extract and structure the content of this image contain table/chart/graph.
+(IF chart/graph) put into two separate sections:
+1. Original Context:
+Extract all visible text, chart, and numbers exactly as they appear on the page. Do not summarize or interpret. Preserve the original reading order and formatting.
+2. Layout Description:
+Describe the layout, chart positioning with it numbers, and structure of the page. Include information on:
+- Be extra careful with statistics numbers, dont mix up
+- Table positions, rows, and columns (be careful with numbers)
+- Chart types, legends, axes, and color usage
+- The relative placement of key sections (top-left, center, footer, etc.)
+- Any coloring used to differentiate groups or emphasize data
+- (If radial chart) Extract numbers of chart in extra careful, small fonts
+
+(IF table) extract the table originally in table format, be extra careful with rows and columns, and value inside cells.
+
+Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page and describe the layout objectively."""
+)
+
+TABLE_OCR_PROMPT_TEXT = (
+"""You are an OCR tool. The image provided is a table. Extract the table in **original table format**, preserving the structure.
+Be extra careful with:
+- Each column's alignment
+- Row data and labels
+- Values inside each cell, especially `/` vs empty spaces
+- Do NOT summarize or interpret. Just extract what's shown.
+Output must strictly be in table format (Markdown or CSV), with clear column and row alignment."""
+)
+
+IMAGE_DESC_PROMPT_TEXT = (
+"Describe the image in detail."
+)
 
 def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
     global MODEL, TOKENIZER, RETRIEVER
@@ -55,7 +105,7 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separat
     return MODEL, TOKENIZER, retriever
 
 def format_data_inference(user_input, conversation_history, system_prompt):
-    recent_history = conversation_history[-6:]
+    recent_history = conversation_history[-8:]
     conversation = [{"role": "system", "content": system_prompt}]
     conversation.extend(recent_history)
     conversation.append({"role": "user", "content": user_input})
@@ -128,7 +178,6 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     except:
         docs_local = []
 
-    
     websites = []
     website_txt = "./src/rags/website.txt"
     if os.path.exists(website_txt):
@@ -139,46 +188,74 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     if websites:
         chrome_options = Options()
         chrome_options.binary_location = "/usr/bin/google-chrome"
-        chrome_options.add_argument("--headless")  # Optional: remove for visible browser
+        chrome_options.add_argument("--headless=new")  # Modern headless Chrome
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920x1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        chrome_options.add_argument("--ignore-certificate-errors")   # <--- add
+        chrome_options.add_argument("--ignore-ssl-errors")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                                    " AppleWebKit/537.36 (KHTML, like Gecko)"
+                                    " Chrome/122.0.0.0 Safari/537.36")
 
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
         for url in websites:
-            # Remove any trailing slash
             url = url.rstrip('/')
             success = False
             attempts = 0
-            max_attempts = 3
+            max_attempts = 2
 
             while not success and attempts < max_attempts:
                 attempts += 1
                 try:
                     driver.get(url)
-                    # Wait until the body element is present (up to 10 seconds)
-                    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-                    body = driver.find_element(By.TAG_NAME, "body")
-                    text = body.text.strip()
-                    if text:
-                        docs_url.append(Document(text=text, metadata={"source": url}))
+
+                    # Wait for the document to fully load
+                    WebDriverWait(driver, 10).until(
+                        lambda d: d.execute_script("return document.readyState") == "complete"
+                    )
+                    WebDriverWait(driver, 10).until(
+                        lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 100
+                    )
+                    body_text = driver.find_element(By.TAG_NAME, "body").text.strip()
+                    docs_url.append(Document(text=body_text, metadata={"source": url}))
                     success = True
+
                 except Exception as e:
-                    print(f"Attempt {attempts} failed to load {url}: {e}")
-                    if attempts < max_attempts:
-                        time.sleep(2)  # Wait 2 seconds before retrying
+                    print(f"[Attempt {attempts}/{max_attempts}] Error loading {url}: {e}")
+                    time.sleep(3)  # Increase sleep to give the site time to settle before retrying
 
             if not success:
-                print(f"Failed to load {url} after {max_attempts} attempts.")
+                print(f"Failed to capture text from {url} with Selenium; trying other methods...")
+
+                import requests
+                from bs4 import BeautifulSoup
+
+                try:
+                    headers = {
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/122.0.0.0 Safari/537.36"
+                        )
+                    }
+                    r = requests.get(url, headers=headers, timeout=15)
+                    if r.status_code == 200:
+                        soup = BeautifulSoup(r.text, "html.parser")
+                        fallback_text = soup.get_text("\n", strip=True)
+                        docs_url.append(Document(text=fallback_text, metadata={"source": url}))
+                        print(f"Fallback success: captured text from {url}")
+                    else:
+                        print(f"Fallback request returned code {r.status_code} for {url}")
+                except Exception as e2:
+                    print(f"Requests fallback also failed for {url}: {e2}")
 
         driver.quit()
-
-    model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
-    model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
-    FastVisionModel.for_inference(model)
     
     def extract_image_docs(folder, prompt_text):
         docs = []
@@ -232,50 +309,61 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
                 all_docs.append(Document(text=text, metadata={"source": pdf_path, "page": i}))
         return all_docs
 
-    docs_image_caption = extract_image_docs(
-        "./src/rags/image_caption",
-        "Please extract all the text from this image, as detail as possible."
-    )
+    folder_caption = "./src/rags/image_caption"
+    folder_desc = "./src/rags/image_desc"
+    folder_tabular = "./src/rags/image_tabular"
+    folder_pdf_ocr = "./src/rags/pdf_ocr"
     
-    docs_image_description = extract_image_docs(
-        "./src/rags/image_desc",
-        "Describe the image in detail."
-    )
+    if (
+        folder_has_files(folder_caption)
+        or folder_has_files(folder_desc)
+        or folder_has_files(folder_tabular)
+        or folder_has_files(folder_pdf_ocr)
+    ):
+        # model_id="unsloth/granite-vision-3.2-2b-unsloth-bnb-4bit"
+        model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
+        model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
+        FastVisionModel.for_inference(model)
 
-    docs_image_table = extract_image_docs(
-        "./src/rags/image_tabular",
-        "Please extract all tabular or chart information from this image (also small description what is chart/tabular about), as detailed and structured as possible including numbers if available."
-    )
+        docs_image_caption = extract_image_docs(
+            folder_caption,
+            IMAGE_OCR_PROMPT_TEXT
+        )
     
-#     docs_pdf_ocr = extract_pdf_ocr_docs(
-#         "./src/rags/pdf_ocr",
-#         """You are an OCR tool. Your task is to extract and structure the content of this page into two separate sections:
-# 1. Original Context:
-# Extract all visible text, chart, and numbers exactly as they appear on the page. Do not summarize or interpret. Preserve the original reading order and formatting.
-# 2. Layout Description:
-# Describe the layout, chart positioning with it numbers, and structure of the page. Include information on:
-# - Be extra careful with statistics numbers, dont mix up
-# - Table positions, rows, and columns (be careful with numbers)
-# - Chart types, legends, axes, and color usage
-# - The relative placement of key sections (top-left, center, footer, etc.)
-# - Any coloring used to differentiate groups or emphasize data
+        docs_image_description = extract_image_docs(
+            folder_desc,
+            IMAGE_DESC_PROMPT_TEXT
+        )
 
-# Important: Do NOT add any analysis, opinion, or summary. Just extract exactly what is shown on the page and describe the layout objectively."""
-#     )
-    docs_pdf_ocr = extract_pdf_ocr_docs(
-        "./src/rags/pdf_ocr",
-        "Please extract all text and tabular/chart from this screenshot page, as detailed and structured as possible including numbers if available."
-    )
+        docs_image_table = extract_image_docs(
+            folder_tabular,
+            CHART_OCR_PROMPT_TEXT
+        )
+
+        docs_pdf_ocr = extract_pdf_ocr_docs(
+            folder_pdf_ocr,
+            PDF_OCR_PROMPT_TEXT
+        )
 
 
-    model = model.cpu()
-    model = None
-    del model
-    del tokenizer
-    with torch.no_grad():
-        torch.cuda.empty_cache()
-    import gc
-    gc.collect()
+        model = model.cpu()
+        model = None
+        del model
+        del tokenizer
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+        import gc
+        gc.collect()
+        
+        hf_cache_path = os.path.expanduser("~/.cache/huggingface")
+        if os.path.exists(hf_cache_path):
+            shutil.rmtree(hf_cache_path)
+
+    else:
+        docs_image_caption = []
+        docs_image_description = []
+        docs_image_table = []
+        docs_pdf_ocr = []
 
     pptx_reader = PptxReader()
     docs_pptx = []
@@ -403,7 +491,7 @@ def run_inference_lm_memory_with_rag_single(
         max_new_tokens=max_tokens,
         temperature=temperature,
         do_sample=False,
-        repetition_penalty=1.1,
+        repetition_penalty=1.2,
         use_cache=True
     )
     
@@ -459,7 +547,7 @@ def parse_user_input_with_llm(user_input: str, model_id: str):
         max_new_tokens=512,
         temperature=0.3,
         do_sample=False,
-        repetition_penalty=1.1,
+        repetition_penalty=1.2,
         use_cache=True
     )
 
@@ -467,6 +555,9 @@ def parse_user_input_with_llm(user_input: str, model_id: str):
         outputs[0][inputs["input_ids"].shape[1]:],
         skip_special_tokens=True
     ).strip()
+    
+    if not raw_parse:
+        return [user_input]
     
     try:
         parsed = json.loads(raw_parse)
@@ -538,7 +629,7 @@ def run_inference_lm_memory(
             max_new_tokens=max_tokens,
             temperature=temperature,
             do_sample=False,
-            repetition_penalty=1.1,
+            repetition_penalty=1.2,
             use_cache=True
         )
         
@@ -576,10 +667,10 @@ def apply_text_preprocessing(text: str, replace_spaces: bool, delete_urls: bool)
 
 if __name__ == "__main__":
     conversation_history = []
-    model_nm = "unsloth/Qwen2.5-7B-Instruct"
+    model_nm = "unsloth/Meta-Llama-3.1-8B-Instruct"
     system_prompt = (
         "You are an AI assistant with knowledge of retrieved documents. "
-        "Always answer in detail using the retrieved context, straightforward, and do not hallucinate."
+        "Please answer based on retrived context and do not hallucinate."
     )
 
     prompts = [
@@ -601,24 +692,6 @@ if __name__ == "__main__":
         "What is Umrah Saving account",
         "What is Umrah saving account profit rate",
 
-        # Malay versions
-        # "3 sokongan utama yang diperlukan untuk menggalakkan pelaksanaan ESG 1.0 dan 2.0",
-        # "PENCETUS LAPORAN",
-        # "Soalan Utama Yang Dijawab Dalam Laporan ESG 2.0",
-        # "PENEMUAN UTAMA",
-        # "FAROZE NADAR",
-        # "Tahap penerimaan ESG 1.0 dan 2.0 secara umum. Sila berikan secara keseluruhan sahaja",
-        # "3 cabaran utama dalam mengamalkan ESG",
-        # "3 sokongan utama yang diperlukan untuk menggalakkan pelaksanaan ESG",
-        # "Tahap Kesedaran ESG Umum bagi sektor perkhidmatan",
-        # "Hab ESG PKS",
-        # "Tahap Penerimaan ESG Secara Keseluruhan Mengikut Sektor",
-        # "Sebab Utama Penerima Mengamalkan ESG",
-        # "Motivasi Utama Bagi Bukan Penerima ESG Untuk Mengamalkan ESG",
-        # "Apakah input perayu bagi kes 01(i)-17-05/2022(W)",
-        # "Apakah itu iGain",
-        # "Apakah Akaun Simpanan Umrah",
-        # "Apakah kadar keuntungan akaun simpanan Umrah"
     ]
 
 
@@ -628,8 +701,8 @@ if __name__ == "__main__":
             user_input_b,
             conversation_history,
             system_prompt=system_prompt,
-            temperature=0.2,
-            max_tokens=600
+            temperature=0.3,
+            max_tokens=800
         )
         print("\n====================")
         print(user_input_b)
