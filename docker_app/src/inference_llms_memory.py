@@ -322,7 +322,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     ):
         # model_id="unsloth/granite-vision-3.2-2b-unsloth-bnb-4bit"
         model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
-        model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
+        model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=False)
         FastVisionModel.for_inference(model)
 
         docs_image_caption = extract_image_docs(
