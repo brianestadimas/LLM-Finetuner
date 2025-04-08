@@ -1,3 +1,4 @@
+from io import BytesIO
 from unsloth import FastLanguageModel, FastVisionModel
 from pdf2image import convert_from_path
 from transformers import TextStreamer
@@ -18,6 +19,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+import base64
+from openai import OpenAI
 
 log_file_path = "model_logs.txt"
 MODEL = None
@@ -79,7 +82,8 @@ IMAGE_DESC_PROMPT_TEXT = (
 "Describe the image in detail."
 )
 
-def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
+def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50, 
+                     replace_spaces=False, delete_urls=False, ocr_model="gpt-4o-mini", gpt_api_key=None):
     global MODEL, TOKENIZER, RETRIEVER
     # If already loaded, just return
     if MODEL is not None and TOKENIZER is not None:
@@ -92,7 +96,8 @@ def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separat
     except:
         model_name = model_id
 
-    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap, replace_spaces=replace_spaces, delete_urls=delete_urls)
+    retriever = build_retriever(separator=separator, chunk_size=chunk_size, chunk_overlap=chunk_overlap, replace_spaces=replace_spaces, 
+                                delete_urls=delete_urls, ocr_model=ocr_model, gpt_api_key=gpt_api_key)
 
     print(f"Loading model from: {model_name}")
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -114,66 +119,9 @@ def format_data_inference(user_input, conversation_history, system_prompt):
     )
     return formatted_prompt.strip()
 
-def load_big_csv_in_chunks(file_path, rows_per_chunk=1000):
-    """
-    Read the CSV in row batches. For each batch, produce one Document.
-    E.g., if you have 200k rows, you'll get ~200 chunks.
-    """
-    docs = []
-    chunk_index = 0
-    row_count = 0
-    with open(file_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        header = next(reader, None)  # If there's a header
-        batch = []
-
-        for row in reader:
-            batch.append(row)
-            row_count += 1
-
-            # If batch hits the limit, log and create a new Document
-            if len(batch) >= rows_per_chunk:
-                # Log the chunk
-                with open(log_file_path, "a", encoding="utf-8") as log_file:
-                    log_file.write(
-                        f"Processing CSV chunk #{chunk_index} for file {file_path}: "
-                        f"rows {row_count - len(batch) + 1} to {row_count}\n"
-                    )
-
-                text = convert_rows_to_text(header, batch)
-                docs.append(Document(text=text, metadata={"source": file_path}))
-
-                chunk_index += 1
-                batch = []
-
-        # leftover rows if batch is not empty
-        if batch:
-            with open(log_file_path, "a", encoding="utf-8") as log_file:
-                log_file.write(
-                    f"Processing FINAL CSV chunk #{chunk_index} for file {file_path}: "
-                    f"rows {row_count - len(batch) + 1} to {row_count}\n"
-                )
-            text = convert_rows_to_text(header, batch)
-            docs.append(Document(text=text, metadata={"source": file_path}))
-
-    return docs
-
-def convert_rows_to_text(header, rows):
-    """
-    Turn the chunk of CSV rows into a single string.
-    This is your chance to summarize or just join them.
-    """
-    lines = []
-    if header:
-        lines.append(",".join(header))
-    for r in rows:
-        lines.append(",".join(r))
-    return "\n".join(lines)
-
-def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False):
+def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_spaces=False, delete_urls=False, ocr_model='Qwen2.5VL', gpt_api_key=None):
     # Load documents from various sources
     try:
-        # Replace SimpleDirectoryReader with our Poppler-based loader
         docs_local = SimpleDirectoryReader("./src/rags/pdf").load_data()
     except:
         docs_local = []
@@ -195,7 +143,6 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         chrome_options.add_argument("--window-size=1920x1080")
         chrome_options.add_argument("--ignore-certificate-errors")   # <--- add
         chrome_options.add_argument("--ignore-ssl-errors")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -257,57 +204,103 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
 
         driver.quit()
     
-    def extract_image_docs(folder, prompt_text):
+    def extract_docs(folder, prompt_text, doc_type="image", ocr_model='Qwen2.5VL'):
         docs = []
-        for path in glob.glob(f"{folder}/*"):
-            image = Image.open(path).convert("RGB")
-            messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
-            prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-            inputs = tokenizer(image, prompt, add_special_tokens=False, return_tensors="pt").to("cuda")
-            with torch.no_grad():
-                output_ids = model.generate(
-                    **inputs, max_new_tokens=2048, temperature=0.0,
-                    do_sample=False, min_p=0.1, use_cache=True
-                )
-            result = tokenizer.decode(
-                output_ids[:, inputs["input_ids"].shape[1]:][0],
-                skip_special_tokens=True, clean_up_tokenization_spaces=False
-            ).strip()
-            docs.append(Document(text=result, metadata={"source": path}))
+        if ocr_model.lower() == "gpt-4o-mini":
+            client = OpenAI(api_key=gpt_api_key)
+            if doc_type == "image":
+                for path in glob.glob(f"{folder}/*"):
+                    with open(path, "rb") as f:
+                        base64_img = base64.b64encode(f.read()).decode("utf-8")
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt_text},
+                                {"type": "input_image", "image_url": f"data:image/png;base64,{base64_img}"},
+                            ],
+                        }
+                    ]
+                    response = client.responses.create(model="gpt-4o-mini", input=messages)
+                    docs.append(Document(text=response.output_text, metadata={"source": path}))
+            elif doc_type == "pdf":
+                for pdf_path in glob.glob(f"{folder}/*.pdf"):
+                    try:
+                        pages = convert_from_path(pdf_path)
+                    except:
+                        continue
+                    for i, page_img in enumerate(pages):
+                        page_img = page_img.convert("RGB").resize(
+                            (page_img.width // 2, page_img.height // 2), Image.LANCZOS
+                        )
+                        buf = BytesIO()
+                        page_img.save(buf, format="PNG")
+                        base64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
+                        messages = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "input_text", "text": prompt_text},
+                                    {"type": "input_image", "image_url": f"data:image/png;base64,{base64_img}"},
+                                ],
+                            }
+                        ]
+                        response = client.responses.create(model="gpt-4o-mini", input=messages)
+                        docs.append(Document(text=response.output_text, metadata={"source": pdf_path, "page": i}))
+                        
+        else:
+            if doc_type == "image":
+                for path in glob.glob(f"{folder}/*"):
+                    image = Image.open(path).convert("RGB")
+                    messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
+                    prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+                    inputs = tokenizer(image, prompt, add_special_tokens=False, return_tensors="pt").to("cuda")
+                    with torch.no_grad():
+                        output_ids = model.generate(
+                            **inputs,
+                            max_new_tokens=2048,
+                            temperature=0.0,
+                            do_sample=False,
+                            min_p=0.1,
+                            use_cache=True
+                        )
+                    result = tokenizer.decode(
+                        output_ids[:, inputs["input_ids"].shape[1]:][0],
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=False
+                    ).strip()
+                    docs.append(Document(text=result, metadata={"source": path}))
+            elif doc_type == "pdf":
+                for pdf_path in glob.glob(f"{folder}/*.pdf"):
+                    try:
+                        pages = convert_from_path(pdf_path)
+                    except Exception as e:
+                        with open(log_file_path, "a", encoding="utf-8") as log_file:
+                            log_file.write(f"Failed to convert {pdf_path}: {e}")
+                        continue
+                    for i, page_img in enumerate(pages):
+                        with open(log_file_path, "a", encoding="utf-8") as log_file:
+                            log_file.write(f"Processing OCR on page {i}, {pdf_path}\n")
+                        page_img = page_img.convert("RGB")
+                        page_img = page_img.resize((page_img.width // 2, page_img.height // 2), resample=Image.LANCZOS)
+                        msg = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
+                        prompt = tokenizer.apply_chat_template(msg, add_generation_prompt=True)
+                        inputs = tokenizer(page_img, prompt, add_special_tokens=False, return_tensors="pt").to("cuda")
+                        with torch.no_grad():
+                            out_ids = model.generate(
+                                **inputs,
+                                max_new_tokens=2048,
+                                temperature=0.0,
+                                do_sample=False,
+                                min_p=0.1
+                            )
+                        text = tokenizer.decode(
+                            out_ids[:, inputs["input_ids"].shape[1]:][0],
+                            skip_special_tokens=True,
+                            clean_up_tokenization_spaces=False
+                        ).strip()
+                        docs.append(Document(text=text, metadata={"source": pdf_path, "page": i}))
         return docs
-    
-    def extract_pdf_ocr_docs(folder, prompt_text):
-        all_docs = []
-        for pdf_path in glob.glob(f"{folder}/*.pdf"):
-            try:
-                pages = convert_from_path(pdf_path)  # Convert PDF to list of PIL pages
-            except Exception as e:
-                with open(log_file_path, "a", encoding="utf-8") as log_file:
-                    log_file.write(f"Failed to convert {pdf_path}: {e}")
-                continue
-
-            for i, page_img in enumerate(pages):
-                with open(log_file_path, "a", encoding="utf-8") as log_file:
-                    log_file.write(f"Processing OCR on page {i}, {pdf_path}\n")
-                page_img = page_img.convert("RGB")
-                page_img = page_img.resize(
-                    (page_img.width // 2, page_img.height // 2),
-                    resample=Image.LANCZOS
-                )
-                
-                # Build the prompt
-                msg = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}]
-                prompt = tokenizer.apply_chat_template(msg, add_generation_prompt=True)
-                inputs = tokenizer(page_img, prompt, add_special_tokens=False, return_tensors="pt").to("cuda")
-                with torch.no_grad():
-                    out_ids = model.generate(**inputs, max_new_tokens=2048, temperature=0.0, do_sample=False, min_p=0.1)
-                text = tokenizer.decode(
-                    out_ids[:, inputs["input_ids"].shape[1]:][0],
-                    skip_special_tokens=True,
-                    clean_up_tokenization_spaces=False
-                ).strip()
-                all_docs.append(Document(text=text, metadata={"source": pdf_path, "page": i}))
-        return all_docs
 
     folder_caption = "./src/rags/image_caption"
     folder_desc = "./src/rags/image_desc"
@@ -321,43 +314,54 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         or folder_has_files(folder_pdf_ocr)
     ):
         # model_id="unsloth/granite-vision-3.2-2b-unsloth-bnb-4bit"
-        model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
-        model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=False)
-        FastVisionModel.for_inference(model)
+        if ocr_model == "Qwen2.5VL":
+            model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
+            model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=False)
+            FastVisionModel.for_inference(model)
+        else:
+            model, tokenizer = None, None
 
-        docs_image_caption = extract_image_docs(
+        docs_image_caption = extract_docs(
             folder_caption,
-            IMAGE_OCR_PROMPT_TEXT
+            IMAGE_OCR_PROMPT_TEXT,
+            "image",
+            ocr_model
         )
     
-        docs_image_description = extract_image_docs(
+        docs_image_description = extract_docs(
             folder_desc,
-            IMAGE_DESC_PROMPT_TEXT
+            IMAGE_DESC_PROMPT_TEXT,
+            "image",
+            ocr_model
         )
 
-        docs_image_table = extract_image_docs(
+        docs_image_table = extract_docs(
             folder_tabular,
-            CHART_OCR_PROMPT_TEXT
+            CHART_OCR_PROMPT_TEXT,
+            "image",
+            ocr_model
         )
 
-        docs_pdf_ocr = extract_pdf_ocr_docs(
+        docs_pdf_ocr = extract_docs(
             folder_pdf_ocr,
-            PDF_OCR_PROMPT_TEXT
+            PDF_OCR_PROMPT_TEXT,
+            "pdf",
+            ocr_model
         )
-
-
-        model = model.cpu()
-        model = None
-        del model
-        del tokenizer
+        
+        if model is not None:
+            model = model.cpu()
+            model = None
+            del model
+            del tokenizer
         with torch.no_grad():
             torch.cuda.empty_cache()
         import gc
         gc.collect()
         
-        hf_cache_path = os.path.expanduser("~/.cache/huggingface")
-        if os.path.exists(hf_cache_path):
-            shutil.rmtree(hf_cache_path)
+        # hf_cache_path = os.path.expanduser("~/.cache/huggingface")
+        # if os.path.exists(hf_cache_path):
+        #     shutil.rmtree(hf_cache_path)
 
     else:
         docs_image_caption = []
@@ -423,13 +427,6 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5", device="cuda")
     # embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cuda")
     # embed_model = HuggingFaceEmbedding(model_name="intfloat/multilingual-e5-large", device="cuda")
-    # embed_model = HuggingFaceEmbedding(
-    #     model_name="Linq-AI-Research/Linq-Embed-Mistral",
-    #     device="cuda",
-    #     trust_remote_code=True,
-    #     model_kwargs={"load_in_4bit": True}
-    # )
-
     
     # Service context with text splitter
     Settings.embed_model = embed_model
@@ -472,10 +469,8 @@ def run_inference_lm_memory_with_rag_single(
         f"Please use this context to respond accurately and try to be strict/objective.\n"
     )
     
-    # Format prompt with conversation history
     prompt = format_data_inference(user_input, conversation_history, rag_prompt)
     
-    # Tokenize input
     inputs = tokenizer(
         prompt,
         return_tensors="pt",
@@ -485,7 +480,6 @@ def run_inference_lm_memory_with_rag_single(
     )
     inputs = {k: v.to("cuda") for k, v in inputs.items()}
     
-    # Generate response
     outputs = model.generate(
         **inputs,
         max_new_tokens=max_tokens,
@@ -495,7 +489,6 @@ def run_inference_lm_memory_with_rag_single(
         use_cache=True
     )
     
-    # Decode and format response
     gen = tokenizer.decode(
         outputs[0][inputs["input_ids"].shape[1]:],
         skip_special_tokens=True
@@ -561,7 +554,6 @@ def parse_user_input_with_llm(user_input: str, model_id: str):
     
     try:
         parsed = json.loads(raw_parse)
-        # Must ensure it's a list of strings
         if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
             return parsed
         else:
@@ -602,7 +594,6 @@ def run_inference_lm_memory(
         )
     all_responses = []
     for chunk in chunks:
-        # -- same sanitization to avoid quotes in LanceDB query
         sanitized_chunk = chunk.replace('"', '').replace(',', ' ')
         retrieved = retrieve_context(sanitized_chunk, retriever)
         
@@ -643,7 +634,6 @@ def run_inference_lm_memory(
         
         all_responses.append(f"{chunk}\n{gen_sub}")
 
-    # Join partial answers with a blank line
     final_answer = "\n\n".join(all_responses)
     return final_answer, conversation_history
 
@@ -651,17 +641,12 @@ def run_inference_lm_memory(
 def apply_text_preprocessing(text: str, replace_spaces: bool, delete_urls: bool) -> str:
     """Apply text cleanup rules if requested."""
     if replace_spaces:
-        # Replace consecutive whitespace (spaces, newlines, tabs) with a single space
         text = re.sub(r"\s+", " ", text)
 
     if delete_urls:
-        # Remove URLs, emails, etc. 
-        # For URLs, something like:
         text = re.sub(r"https?://\S+|www\.\S+", "", text)
-        # For emails, if you want that too:
         text = re.sub(r"\S+@\S+\.\S+", "", text)
 
-    # Optionally trim leading/trailing spaces
     text = text.strip()
     return text
 
@@ -674,26 +659,18 @@ if __name__ == "__main__":
     )
 
     prompts = [
-        "Top 3 key support required to encourage ESG 1.0 and 2.0 implementation for each",
-        "REPORT INITIATORS",
-        "Key Questions Addressed In The ESG 2.0 Report",
-        "KEY FINDINGS",
-        "FAROZE NADAR",
-        "General ESG 1.0 and 2.0 adoption level. please provide overall only",
-        "Top 3 challenges when adopting ESG 1.0 and 2.0 for each",
-        "Top 3 key support required to encourage ESG implementation",
-        "General ESG Awareness Level for service sector",
-        "SME ESG Hub",
-        "Overall ESG Adoption By Sectors",
-        "Key Reasons For Adopters To Implement ESG",
-        "Key Motivations For Non-ESG Adopters To Implement ESG",
-        "What is input appellant for case 01(i)-17-05/2022(W)",
-        "What is iGain",
-        "What is Umrah Saving account",
-        "What is Umrah saving account profit rate",
-
+        "Show all the statistic between europe, N.america, Asia-pasific, Emerging markets in grouping include numbers",
+        "Show me the table of user matrix for admin portal",
+        "Show me all the form of star health and insurance company limited",
+        "Show me documents submitted checklist and declaration by the insured",
+        "Show me details of hospitalization",
+        "All details of claim in section E",
+        "What is george age and dob",
+        # "Top 3 key support required to encourage ESG 1.0 and 2.0 implementation for each",
+        # "REPORT INITIATORS",
+        # "Key Reasons For Adopters To Implement ESG",
+        # "Key Motivations For Non-ESG Adopters To Implement ESG",
     ]
-
 
     for user_input_b in prompts:
         answer_b, conversation_history = run_inference_lm_memory(

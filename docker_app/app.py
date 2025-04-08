@@ -396,6 +396,8 @@ def run_model_llm():
                         chunk_overlap=metadata.get("chunk_overlap", 50),
                         replace_spaces=metadata.get("replace_spaces", False),
                         delete_urls=metadata.get("delete_urls", False),
+                        ocr_model=metadata.get("ocr_model", False),
+                        gpt_api_key=metadata.get("gpt_api_key", None),
                     )
                 print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
