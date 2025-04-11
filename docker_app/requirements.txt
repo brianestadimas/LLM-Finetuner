@@ -31,3 +31,4 @@ webdriver-manager
 pdf2image
 beautifulsoup4
 requests
+openai==1.71.0

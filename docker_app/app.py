@@ -22,6 +22,7 @@ from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
 from src.inference_llms_memory import run_inference_lm_memory, initialize_model
+from src.inference_llms_memory_no_unsloth import run_inference_lm_memory_no_unsloth, initialize_model_no_unsloth
 from werkzeug.serving import WSGIRequestHandler
 from werkzeug.utils import secure_filename
 WSGIRequestHandler.protocol_version = "HTTP/1.1"
@@ -81,6 +82,9 @@ MODEL_HF_URL = {
 }
 
 MODEL_HF_URL_LLM = {
+    # No unsloth
+    "Qwen2.5-7B-Ori": "Qwen/Qwen2.5-7B-Instruct",
+    
     # Update 02-04-2025
     "Gemma-3-12B": "unsloth/gemma-3-12b-it",
     
@@ -357,19 +361,22 @@ def run_model_llm():
                 if agent_flag:
                     SYSTEM_MESSAGE = metadata.get("system_prompt", "")
                     conversation_history = []
-                    finetuner = FinetuneLMAgent(
-                        data=data,
-                        epochs=params["epochs"],
-                        learning_rate=params["learning_rate"],
-                        warmup_ratio=params["warmup_ratio"],
-                        gradient_accumulation_steps=params["gradient_accumulation_steps"],
-                        optim=params["optim"],
-                        model_id=params["model_type"],
-                        peft_r=params["peft_r"],
-                        peft_alpha=params["peft_alpha"],
-                        peft_dropout=params["peft_dropout"],
-                        system_prompt=SYSTEM_MESSAGE,
-                    )
+                    if params["model_type"].split("/")[0] != "unsloth":
+                        pass
+                    else:
+                        finetuner = FinetuneLMAgent(
+                            data=data,
+                            epochs=params["epochs"],
+                            learning_rate=params["learning_rate"],
+                            warmup_ratio=params["warmup_ratio"],
+                            gradient_accumulation_steps=params["gradient_accumulation_steps"],
+                            optim=params["optim"],
+                            model_id=params["model_type"],
+                            peft_r=params["peft_r"],
+                            peft_alpha=params["peft_alpha"],
+                            peft_dropout=params["peft_dropout"],
+                            system_prompt=SYSTEM_MESSAGE,
+                        )
                 else:
                     finetuner = FinetuneLM(
                         data=data,
@@ -388,17 +395,30 @@ def run_model_llm():
  
                 finetuner.run()
                 if agent_flag:
-                    _,_,_ = initialize_model(
-                        model_id=params["model_type"],
-                        checkpoint_root="./model_cp",
-                        separator=metadata.get("separator", " "),
-                        chunk_size=metadata.get("chunk_size", 4096), 
-                        chunk_overlap=metadata.get("chunk_overlap", 50),
-                        replace_spaces=metadata.get("replace_spaces", False),
-                        delete_urls=metadata.get("delete_urls", False),
-                        ocr_model=metadata.get("ocr_model", False),
-                        gpt_api_key=metadata.get("gpt_api_key", None),
-                    )
+                    if params["model_type"].split("/")[0] != "unsloth":
+                        _,_,_ = initialize_model_no_unsloth(
+                            model_id=params["model_type"],
+                            checkpoint_root="./model_cp",
+                            separator=metadata.get("separator", " "),
+                            chunk_size=metadata.get("chunk_size", 4096), 
+                            chunk_overlap=metadata.get("chunk_overlap", 50),
+                            replace_spaces=metadata.get("replace_spaces", False),
+                            delete_urls=metadata.get("delete_urls", False),
+                            ocr_model=metadata.get("ocr_model", False),
+                            gpt_api_key=metadata.get("gpt_api_key", None),
+                        )
+                    else:
+                        _,_,_ = initialize_model(
+                            model_id=params["model_type"],
+                            checkpoint_root="./model_cp",
+                            separator=metadata.get("separator", " "),
+                            chunk_size=metadata.get("chunk_size", 4096), 
+                            chunk_overlap=metadata.get("chunk_overlap", 50),
+                            replace_spaces=metadata.get("replace_spaces", False),
+                            delete_urls=metadata.get("delete_urls", False),
+                            ocr_model=metadata.get("ocr_model", False),
+                            gpt_api_key=metadata.get("gpt_api_key", None),
+                        )
                 print("Optimizing model with olive in background..")
                 print("Finetuning completed successfully.")
 
@@ -435,8 +455,6 @@ def run_model_llm():
                 print("Optimizing model...")
                 print("This is running in a background process and can be closed.")
                 # olive_opt()
-
-                    
 
         finetune_thread = threading.Thread(target=finetune_task, args=(reconstructed_data, finetune_params))
         finetune_thread.start()
@@ -624,14 +642,24 @@ def inference_llm():
 
     try:
         if is_agent:
-            result, updated_conversation_history = run_inference_lm_memory(
-                model_id,
-                user_input,
-                conversation_history=conversation_history,
-                system_prompt=SYSTEM_MESSAGE,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            if model_id.split("/")[0] != "unsloth":
+                result, updated_conversation_history = run_inference_lm_memory_no_unsloth(
+                    model_id,
+                    user_input,
+                    conversation_history=conversation_history,
+                    system_prompt=SYSTEM_MESSAGE,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            else:
+                result, updated_conversation_history = run_inference_lm_memory(
+                    model_id,
+                    user_input,
+                    conversation_history=conversation_history,
+                    system_prompt=SYSTEM_MESSAGE,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
             if updated_conversation_history:
                 conversation_history = updated_conversation_history
         else:

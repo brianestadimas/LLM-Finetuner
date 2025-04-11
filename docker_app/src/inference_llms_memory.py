@@ -1,4 +1,5 @@
 from io import BytesIO
+import pandas as pd
 from unsloth import FastLanguageModel, FastVisionModel
 from pdf2image import convert_from_path
 from transformers import TextStreamer
@@ -83,7 +84,7 @@ IMAGE_DESC_PROMPT_TEXT = (
 )
 
 def initialize_model(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50, 
-                     replace_spaces=False, delete_urls=False, ocr_model="gpt-4o-mini", gpt_api_key=None):
+                     replace_spaces=False, delete_urls=False, ocr_model='Qwen2.5VL', gpt_api_key=None):
     global MODEL, TOKENIZER, RETRIEVER
     # If already loaded, just return
     if MODEL is not None and TOKENIZER is not None:
@@ -316,7 +317,7 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
         # model_id="unsloth/granite-vision-3.2-2b-unsloth-bnb-4bit"
         if ocr_model == "Qwen2.5VL":
             model_id = "unsloth/Qwen2.5-VL-7B-Instruct"
-            model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=False)
+            model, tokenizer = FastVisionModel.from_pretrained(model_id, load_in_4bit=True)
             FastVisionModel.for_inference(model)
         else:
             model, tokenizer = None, None
@@ -374,10 +375,11 @@ def build_retriever(separator=" ", chunk_size=4096, chunk_overlap=50, replace_sp
     for pptx_file in glob.glob("./src/rags/pptx/*.pptx"):
         docs_pptx.extend(pptx_reader.load_data(pptx_file))
 
-    csv_reader = CSVReader()
     docs_csv = []
-    for csv_file in glob.glob("./src/rags/csv/*.csv"):
-        docs_csv.extend(csv_reader.load_data(file=Path(csv_file)))
+    try:
+        docs_csv = SimpleDirectoryReader("./src/rags/csv").load_data()
+    except:
+        docs_csv = []
 
     # Combine all documents
     docs = (
@@ -659,17 +661,33 @@ if __name__ == "__main__":
     )
 
     prompts = [
-        "Show all the statistic between europe, N.america, Asia-pasific, Emerging markets in grouping include numbers",
-        "Show me the table of user matrix for admin portal",
-        "Show me all the form of star health and insurance company limited",
-        "Show me documents submitted checklist and declaration by the insured",
-        "Show me details of hospitalization",
-        "All details of claim in section E",
-        "What is george age and dob",
+        # "Show all the statistic between europe, N.america, Asia-pasific, Emerging markets in grouping include numbers",
+        # "Show me the table of user matrix for admin portal",
+        # "Show me all the form of star health and insurance company limited",
+        # "Show me documents submitted checklist and declaration by the insured",
+        # "Show me details of hospitalization",
+        # "All details of claim in section E",
+        # "What is george age and dob",
         # "Top 3 key support required to encourage ESG 1.0 and 2.0 implementation for each",
         # "REPORT INITIATORS",
         # "Key Reasons For Adopters To Implement ESG",
         # "Key Motivations For Non-ESG Adopters To Implement ESG",
+        # "Show me the table of selected key financials of the three operational digital banks",
+        # "Show me the table of global IB revenue by bank YTD 2022",
+        # "Give me all statistic numbers and grouping of online banking rivals physical branch banking",
+        # "Give me all statistic numbers and grouping of average US monthly banking uses from 2011 to 2014",
+        # "What is the most usage channel of monthly banking in 2014",
+        # "Give me all statistic numbers and grouping of interest rates from global central banks",
+        # "What are the countries with most interest rate in current and previous in 2018 and its number",
+        # "Give me all statistic of banks prepping for major losses on loans",
+        # "What is statistic number between 4 groups in 2Q 2020 of banks prepping",
+        # "Give me all percentage numbers of share of respondent who conduct banking transactions on the move",
+        # "What are the percentages numbers of share of respondent who conduct banking transactions on the move on turkey, indonesia, and south korea",
+        # "Show me all statistic numbers of number of FDIC-insured commercial banks and branches in the US",
+        # "Show me the table of bank checking accounts",
+        # "Show me the features of instant issue debit card in bank checking accounts",
+        "what is the customer name for order CA-2015-115812",
+        "who handle the task React Expo (Web, Mobile) compilation/deployment",
     ]
 
     for user_input_b in prompts:
