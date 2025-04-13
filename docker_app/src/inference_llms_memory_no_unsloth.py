@@ -1,4 +1,5 @@
 from io import BytesIO
+import openai
 import pandas as pd
 from unsloth import FastLanguageModel, FastVisionModel
 from pdf2image import convert_from_path
@@ -27,32 +28,36 @@ log_file_path = "model_logs.txt"
 MODEL = None
 TOKENIZER = None
 RETRIEVER = None
+GPT_API_KEY = None
 
 def initialize_model_no_unsloth(model_id: str, checkpoint_root: str = "./model_cp", separator=" ", chunk_size=4096, chunk_overlap=50, 
-                     replace_spaces=False, delete_urls=False, ocr_model='Qwen2.5VL', gpt_api_key=None):
-    global MODEL, TOKENIZER, RETRIEVER
+                     replace_spaces=False, delete_urls=False, ocr_model='Qwen2.5VL', gpt_api_key=None, openai_api_key=None):
+    global MODEL, TOKENIZER, GPT_API_KEY
     # If already loaded, just return
     if MODEL is not None and TOKENIZER is not None:
-        return MODEL, TOKENIZER, RETRIEVER
-    # Check if local fine-tuned model is present and non-empty
-    try:
-        adapter_path = find_highest_checkpoint(checkpoint_root)
-        print(f"Highest checkpoint found: {adapter_path}")
-        model_name = adapter_path
-    except:
-        model_name = model_id
+        return MODEL, TOKENIZER
 
-    print(f"Loading model from: {model_name}")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name,
-        load_in_4bit=False,
-    )
+    # Check if local fine-tuned model is present and non-empty
+    if not model_id.startswith("gpt"):
+        try:
+            adapter_path = find_highest_checkpoint(checkpoint_root)
+            print(f"Highest checkpoint found: {adapter_path}")
+            model_name = adapter_path
+        except:
+            model_name = model_id
+
+        print(f"Loading model from: {model_name}")
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_name,
+            load_in_4bit=False,
+        )
+    GPT_API_KEY = openai_api_key or gpt_api_key
     MODEL = model
     TOKENIZER = tokenizer
     return MODEL, TOKENIZER
 
 def format_data_inference(user_input, conversation_history, system_prompt):
-    recent_history = conversation_history[-8:]
+    recent_history = conversation_history[-14:]
     conversation = [{"role": "system", "content": system_prompt}]
     conversation.extend(recent_history)
     conversation.append({"role": "user", "content": user_input})
@@ -67,12 +72,37 @@ def run_inference_lm_memory_no_unsloth(
     conversation_history,
     system_prompt="",
     temperature=0.3,
-    max_tokens=1000
+    max_tokens=1000,
 ):
     """
     1) Let the LLM parse the user_input into a JSON array of chunk(s).
     2) If only 1 chunk, do single-step approach. If multiple, do multi-step.
     """
+    if model_id.startswith("gpt"):
+        global GPT_API_KEY
+        
+        openai.api_key = GPT_API_KEY
+        # Use OpenAI API for gpt models
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        messages.extend(conversation_history)
+        messages.append({"role": "user", "content": user_input})
+    
+        response = openai.ChatCompletion.create(
+            model=model_id,            # e.g. "gpt-3.5-turbo", "gpt-4", etc.
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        answer = response["choices"][0]["message"]["content"]
+
+        conversation_history.append({"role": "user", "content": user_input})
+        conversation_history.append({"role": "assistant", "content": answer})
+
+        return answer, conversation_history
+
     model, tokenizer = initialize_model_no_unsloth(model_id)
     FastLanguageModel.for_inference(model)
     

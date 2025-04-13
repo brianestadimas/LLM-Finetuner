@@ -84,6 +84,7 @@ MODEL_HF_URL = {
 MODEL_HF_URL_LLM = {
     # No unsloth
     "Qwen2.5-7B-Ori": "Qwen/Qwen2.5-7B-Instruct",
+    "GPT-4o": "gpt/GPT-4o",
     
     # Update 02-04-2025
     "Gemma-3-12B": "unsloth/gemma-3-12b-it",
@@ -377,6 +378,7 @@ def run_model_llm():
                             peft_dropout=params["peft_dropout"],
                             system_prompt=SYSTEM_MESSAGE,
                         )
+                        finetuner.run()
                 else:
                     finetuner = FinetuneLM(
                         data=data,
@@ -392,11 +394,11 @@ def run_model_llm():
                         retrain_flag=params["retrain_flag"],
                         system_prompt=SYSTEM_MESSAGE,
                     )
- 
-                finetuner.run()
+                    finetuner.run()
+    
                 if agent_flag:
                     if params["model_type"].split("/")[0] != "unsloth":
-                        _,_,_ = initialize_model_no_unsloth(
+                        _,_ = initialize_model_no_unsloth(
                             model_id=params["model_type"],
                             checkpoint_root="./model_cp",
                             separator=metadata.get("separator", " "),
@@ -406,6 +408,7 @@ def run_model_llm():
                             delete_urls=metadata.get("delete_urls", False),
                             ocr_model=metadata.get("ocr_model", False),
                             gpt_api_key=metadata.get("gpt_api_key", None),
+                            openai_api_key=metadata.get("openai_api_key", None),
                         )
                     else:
                         _,_,_ = initialize_model(
@@ -445,11 +448,14 @@ def run_model_llm():
                 else:
                     print(f"Failed to notify API. Status code: {response.status_code}, Response: {response.text}")
                 
-            finally:             
-                del finetuner
-                import gc
-                gc.collect()
-                torch.cuda.empty_cache()
+            finally:  
+                if params["model_type"].split("/")[0] != "unsloth":
+                    pass
+                else:   
+                    del finetuner
+                    import gc
+                    gc.collect()
+                    torch.cuda.empty_cache()
                 is_running = False
                 print("Olive auto-opt started")
                 print("Optimizing model...")
