@@ -1,5 +1,4 @@
 from io import BytesIO
-import openai
 import pandas as pd
 from unsloth import FastLanguageModel, FastVisionModel
 from pdf2image import convert_from_path
@@ -51,9 +50,9 @@ def initialize_model_no_unsloth(model_id: str, checkpoint_root: str = "./model_c
             model_name=model_name,
             load_in_4bit=False,
         )
+        MODEL = model
+        TOKENIZER = tokenizer
     GPT_API_KEY = openai_api_key or gpt_api_key
-    MODEL = model
-    TOKENIZER = tokenizer
     return MODEL, TOKENIZER
 
 def format_data_inference(user_input, conversation_history, system_prompt):
@@ -81,7 +80,7 @@ def run_inference_lm_memory_no_unsloth(
     if model_id.startswith("gpt"):
         global GPT_API_KEY
         
-        openai.api_key = GPT_API_KEY
+        client = OpenAI(api_key=GPT_API_KEY)
         # Use OpenAI API for gpt models
         messages = []
         if system_prompt:
@@ -90,13 +89,13 @@ def run_inference_lm_memory_no_unsloth(
         messages.extend(conversation_history)
         messages.append({"role": "user", "content": user_input})
     
-        response = openai.ChatCompletion.create(
-            model=model_id,            # e.g. "gpt-3.5-turbo", "gpt-4", etc.
+        response = client.chat.completions.create(
+            model="gpt-4o",
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
         )
-        answer = response["choices"][0]["message"]["content"]
+        answer = response.choices[0].message.content
 
         conversation_history.append({"role": "user", "content": user_input})
         conversation_history.append({"role": "assistant", "content": answer})
