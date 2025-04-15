@@ -21,8 +21,8 @@ from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
 from src.inference_llms import run_inference_lm, run_inference_lm_streaming
-from src.inference_llms_memory import run_inference_lm_memory, initialize_model
-from src.inference_llms_memory_no_unsloth import run_inference_lm_memory_no_unsloth, initialize_model_no_unsloth
+from src.inference_llms_memory import run_inference_lm_memory, initialize_model, run_inference_lm_streaming_memory
+from src.inference_llms_memory_no_unsloth import run_inference_lm_memory_no_unsloth, initialize_model_no_unsloth, run_inference_lm_streaming_memory_no_unsloth
 from werkzeug.serving import WSGIRequestHandler
 from werkzeug.utils import secure_filename
 WSGIRequestHandler.protocol_version = "HTTP/1.1"
@@ -690,11 +690,10 @@ def inference_llm():
         print(f"Error in /inference: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/inference-llm/stream', methods=['POST'])
 def inference_llm_stream():
-    """
-    Streams partial tokens via SSE.
-    """
+    global conversation_history, SYSTEM_MESSAGE
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON payload."}), 400
@@ -708,6 +707,7 @@ def inference_llm_stream():
     temperature = float(data.get("temperature", 0.5))
     max_tokens = int(data.get("max_tokens", 500))
     model_type = data.get("model_type")
+    is_agent = data.get("is_agent", False)
 
     if model_type not in MODEL_HF_URL_LLM:
         return jsonify({"error": f"Unsupported model_type: {model_type}"}), 400
@@ -715,12 +715,48 @@ def inference_llm_stream():
     model_id = MODEL_HF_URL_LLM[model_type]
 
     def sse_generator():
-        # Call our streaming function, which yields token strings
-        for token_chunk in run_inference_lm_streaming(
-            user_input, temperature, max_tokens, model_id
-        ):
-            # SSE requires "data: " prefix, then blank line
-            yield f"data: {token_chunk}\n\n"
+        try:
+            if is_agent:
+                if model_id.split("/")[0] != "unsloth":
+                    stream_gen = run_inference_lm_streaming_memory_no_unsloth(
+                        model_id=model_id,
+                        user_input=user_input,
+                        conversation_history=conversation_history,
+                        system_prompt=SYSTEM_MESSAGE,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                else:
+                    stream_gen = run_inference_lm_streaming_memory(
+                        model_id=model_id,
+                        user_input=user_input,
+                        conversation_history=conversation_history,
+                        system_prompt=SYSTEM_MESSAGE,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+            else:
+                stream_gen = run_inference_lm_streaming(
+                    user_input=user_input,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model_id=model_id
+                )
+
+            final_response = ""
+            for token_chunk in stream_gen:
+                final_response += token_chunk
+                yield f"data: {token_chunk}\n\n"
+
+            think_match = re.search(r"^(.*?)</think>", final_response, re.DOTALL)
+            if think_match:
+                think_content = think_match.group(1).strip()
+                final_response = final_response[think_match.end():].strip()
+                yield f"event: think\ndata: {think_content}\n\n"
+            yield f"event: end\ndata: {final_response.strip()}\n\n"
+
+        except Exception as e:
+            yield f"event: error\ndata: {str(e)}\n\n"
 
     return Response(sse_generator(), mimetype='text/event-stream')
 

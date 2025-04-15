@@ -22,6 +22,9 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 import base64
 from openai import OpenAI
+import threading
+from transformers import TextIteratorStreamer
+
 
 log_file_path = "model_logs.txt"
 MODEL = None
@@ -563,82 +566,6 @@ def parse_user_input_with_llm(user_input: str, model_id: str):
     except:
         return [user_input]
     
-def run_inference_lm_memory(
-    model_id,
-    user_input,
-    conversation_history,
-    system_prompt="",
-    temperature=0.3,
-    max_tokens=1000
-):
-    """
-    1) Let the LLM parse the user_input into a JSON array of chunk(s).
-    2) If only 1 chunk, do single-step approach. If multiple, do multi-step.
-    """
-    model, tokenizer, retriever = initialize_model(model_id)
-    FastLanguageModel.for_inference(model)
-    
-    # Parse user input with the LLM
-    chunks = parse_user_input_with_llm(user_input, model_id)
-    
-    # If only 1 chunk => single-step
-    if len(chunks) == 1:
-        return run_inference_lm_memory_with_rag_single(
-            model_id,
-            user_input,
-            conversation_history,
-            system_prompt,
-            model,
-            tokenizer,
-            retriever,
-            temperature,
-            max_tokens
-        )
-    all_responses = []
-    for chunk in chunks:
-        sanitized_chunk = chunk.replace('"', '').replace(',', ' ')
-        retrieved = retrieve_context(sanitized_chunk, retriever)
-        
-        rag_prompt = (
-            f"{system_prompt}\n"
-            f"User request:\n{chunk}\n"
-            f"Here is some relevant retrieved context:\n{retrieved}\n\n"
-            f"Please use this context to respond accurately and try to be strict/objective.\n"
-        )
-        
-        prompt = format_data_inference(chunk, conversation_history, rag_prompt)
-        
-        inputs = tokenizer(
-            prompt,
-            return_tensors="pt",
-            add_special_tokens=False,
-            truncation=True,
-            max_length=4096
-        )
-        inputs = {k: v.to("cuda") for k, v in inputs.items()}
-        
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=False,
-            repetition_penalty=1.2,
-            use_cache=True
-        )
-        
-        gen_sub = tokenizer.decode(
-            outputs[0][inputs["input_ids"].shape[1]:],
-            skip_special_tokens=True
-        ).strip()
-        
-        conversation_history.append({"role": "user", "content": chunk})
-        conversation_history.append({"role": "assistant", "content": gen_sub})
-        
-        all_responses.append(f"{chunk}\n{gen_sub}")
-
-    final_answer = "\n\n".join(all_responses)
-    return final_answer, conversation_history
-
 
 def apply_text_preprocessing(text: str, replace_spaces: bool, delete_urls: bool) -> str:
     """Apply text cleanup rules if requested."""
@@ -651,54 +578,79 @@ def apply_text_preprocessing(text: str, replace_spaces: bool, delete_urls: bool)
 
     text = text.strip()
     return text
-
-if __name__ == "__main__":
-    conversation_history = []
-    model_nm = "unsloth/Meta-Llama-3.1-8B-Instruct"
-    system_prompt = (
-        "You are an AI assistant with knowledge of retrieved documents. "
-        "Please answer based on retrived context and do not hallucinate."
+    
+def build_rag_prompt(system_prompt, chunk, retrieved):
+    return (
+        f"{system_prompt}\n"
+        f"User request:\n{chunk}\n"
+        f"Here is some relevant retrieved context:\n{retrieved}\n\n"
+        f"Please use this context to respond accurately and try to be strict/objective.\n"
     )
 
-    prompts = [
-        # "Show all the statistic between europe, N.america, Asia-pasific, Emerging markets in grouping include numbers",
-        # "Show me the table of user matrix for admin portal",
-        # "Show me all the form of star health and insurance company limited",
-        # "Show me documents submitted checklist and declaration by the insured",
-        # "Show me details of hospitalization",
-        # "All details of claim in section E",
-        # "What is george age and dob",
-        # "Top 3 key support required to encourage ESG 1.0 and 2.0 implementation for each",
-        # "REPORT INITIATORS",
-        # "Key Reasons For Adopters To Implement ESG",
-        # "Key Motivations For Non-ESG Adopters To Implement ESG",
-        # "Show me the table of selected key financials of the three operational digital banks",
-        # "Show me the table of global IB revenue by bank YTD 2022",
-        # "Give me all statistic numbers and grouping of online banking rivals physical branch banking",
-        # "Give me all statistic numbers and grouping of average US monthly banking uses from 2011 to 2014",
-        # "What is the most usage channel of monthly banking in 2014",
-        # "Give me all statistic numbers and grouping of interest rates from global central banks",
-        # "What are the countries with most interest rate in current and previous in 2018 and its number",
-        # "Give me all statistic of banks prepping for major losses on loans",
-        # "What is statistic number between 4 groups in 2Q 2020 of banks prepping",
-        # "Give me all percentage numbers of share of respondent who conduct banking transactions on the move",
-        # "What are the percentages numbers of share of respondent who conduct banking transactions on the move on turkey, indonesia, and south korea",
-        # "Show me all statistic numbers of number of FDIC-insured commercial banks and branches in the US",
-        # "Show me the table of bank checking accounts",
-        # "Show me the features of instant issue debit card in bank checking accounts",
-        "what is the customer name for order CA-2015-115812",
-        "who handle the task React Expo (Web, Mobile) compilation/deployment",
-    ]
+def generate_response_text(model, tokenizer, prompt, max_tokens, temperature):
+    inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False, truncation=True, max_length=4096)
+    inputs = {k: v.to("cuda") for k, v in inputs.items()}
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_tokens,
+        temperature=temperature,
+        do_sample=False,
+        repetition_penalty=1.2,
+        use_cache=True
+    )
+    return tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
 
-    for user_input_b in prompts:
-        answer_b, conversation_history = run_inference_lm_memory(
-            model_nm,
-            user_input_b,
-            conversation_history,
-            system_prompt=system_prompt,
-            temperature=0.3,
-            max_tokens=800
+def run_inference_lm_memory(model_id, user_input, conversation_history, system_prompt="", temperature=0.3, max_tokens=1000):
+    model, tokenizer, retriever = initialize_model(model_id)
+    FastLanguageModel.for_inference(model)
+    chunks = parse_user_input_with_llm(user_input, model_id)
+    if len(chunks) == 1:
+        return run_inference_lm_memory_with_rag_single(
+            model_id, user_input, conversation_history, system_prompt, model, tokenizer, retriever, temperature, max_tokens
         )
-        print("\n====================")
-        print(user_input_b)
-        print(answer_b)
+    all_responses = []
+    for chunk in chunks:
+        retrieved = retrieve_context(chunk.replace('"', '').replace(',', ' '), retriever)
+        prompt = format_data_inference(chunk, conversation_history, build_rag_prompt(system_prompt, chunk, retrieved))
+        response = generate_response_text(model, tokenizer, prompt, max_tokens, temperature)
+        conversation_history.append({"role": "user", "content": chunk})
+        conversation_history.append({"role": "assistant", "content": response})
+        all_responses.append(f"{chunk}\n{response}")
+    return "\n\n".join(all_responses), conversation_history
+
+
+def run_inference_lm_streaming_memory(model_id, user_input, conversation_history, system_prompt="", temperature=0.3, max_tokens=1000):
+    model, tokenizer, retriever = initialize_model(model_id)
+    FastLanguageModel.for_inference(model)
+    chunks = parse_user_input_with_llm(user_input, model_id)
+    if len(chunks) == 1:
+        response, history = run_inference_lm_memory_with_rag_single(
+            model_id, user_input, conversation_history, system_prompt, model, tokenizer, retriever, temperature, max_tokens
+        )
+        yield response
+        return
+    for chunk in chunks:
+        retrieved = retrieve_context(chunk.replace('"', '').replace(',', ' '), retriever)
+        prompt = format_data_inference(chunk, conversation_history, build_rag_prompt(system_prompt, chunk, retrieved))
+        inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=False, truncation=True, max_length=4096)
+        inputs = {k: v.to("cuda") for k, v in inputs.items()}
+        streamer = TextIteratorStreamer(tokenizer=tokenizer, skip_special_tokens=True, skip_prompt=True)
+        def generate_in_background():
+            model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=False,
+                repetition_penalty=1.2,
+                use_cache=True,
+                streamer=streamer
+            )
+        thread = threading.Thread(target=generate_in_background)
+        thread.start()
+        generated_text = ""
+        for token in streamer:
+            generated_text += token
+            yield token
+        thread.join()
+        conversation_history.append({"role": "user", "content": chunk})
+        conversation_history.append({"role": "assistant", "content": generated_text})

@@ -22,6 +22,9 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 import base64
 from openai import OpenAI
+import threading
+from transformers import TextIteratorStreamer
+
 
 log_file_path = "model_logs.txt"
 MODEL = None
@@ -65,6 +68,78 @@ def format_data_inference(user_input, conversation_history, system_prompt):
     )
     return formatted_prompt.strip()
 
+def _run_gpt_inference(model_id, user_input, conversation_history, system_prompt, temperature, max_tokens):
+    global GPT_API_KEY
+    client = OpenAI(api_key=GPT_API_KEY)
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.extend(conversation_history)
+    messages.append({"role": "user", "content": user_input})
+    
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    answer = response.choices[0].message.content
+    
+    conversation_history.append({"role": "user", "content": user_input})
+    conversation_history.append({"role": "assistant", "content": answer})
+    
+    return answer, conversation_history
+
+def _run_local_inference(model_id, user_input, conversation_history, system_prompt, temperature, max_tokens, stream=False):
+    model, tokenizer = initialize_model_no_unsloth(model_id)
+    FastLanguageModel.for_inference(model)
+    
+    prompt = format_data_inference(user_input, conversation_history, system_prompt)
+    model_inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
+    
+    if not stream:
+        generated_ids = model.generate(
+            **model_inputs,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            do_sample=True
+        )
+        generated_ids = [
+            output_ids[len(input_ids):]
+            for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+        generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        conversation_history.append({"role": "user", "content": user_input})
+        conversation_history.append({"role": "assistant", "content": generated_text})
+        return generated_text, conversation_history
+    else:
+        streamer = TextIteratorStreamer(
+            tokenizer=tokenizer,
+            skip_special_tokens=True,
+            skip_prompt=True
+        )
+        def generate_in_background():
+            model.generate(
+                **model_inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=True,
+                repetition_penalty=1.2,
+                use_cache=True,
+                streamer=streamer
+            )
+        thread = threading.Thread(target=generate_in_background)
+        thread.start()
+        
+        generated_text = ""
+        for new_token in streamer:
+            generated_text += new_token
+            yield new_token
+        thread.join()
+        conversation_history.append({"role": "user", "content": user_input})
+        conversation_history.append({"role": "assistant", "content": generated_text})
+
+
 def run_inference_lm_memory_no_unsloth(
     model_id,
     user_input,
@@ -73,56 +148,22 @@ def run_inference_lm_memory_no_unsloth(
     temperature=0.3,
     max_tokens=1000,
 ):
-    """
-    1) Let the LLM parse the user_input into a JSON array of chunk(s).
-    2) If only 1 chunk, do single-step approach. If multiple, do multi-step.
-    """
     if model_id.startswith("gpt"):
-        global GPT_API_KEY
-        
-        client = OpenAI(api_key=GPT_API_KEY)
-        # Use OpenAI API for gpt models
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        return _run_gpt_inference(model_id, user_input, conversation_history, system_prompt, temperature, max_tokens)
+    else:
+        return _run_local_inference(model_id, user_input, conversation_history, system_prompt, temperature, max_tokens, stream=False)
 
-        messages.extend(conversation_history)
-        messages.append({"role": "user", "content": user_input})
-    
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        answer = response.choices[0].message.content
-
-        conversation_history.append({"role": "user", "content": user_input})
-        conversation_history.append({"role": "assistant", "content": answer})
-
-        return answer, conversation_history
-
-    model, tokenizer = initialize_model_no_unsloth(model_id)
-    FastLanguageModel.for_inference(model)
-    
-    prompt = format_data_inference(user_input, conversation_history, system_prompt)
-    
-    model_inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
-
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=max_tokens,
-        temperature=temperature,
-        do_sample=True
-    )
-    
-    generated_ids = [
-        output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
-
-    generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    
-    conversation_history.append({"role": "user", "content": user_input})
-    conversation_history.append({"role": "assistant", "content": generated_text})
-    
-    return generated_text, conversation_history
+# Streaming public function
+def run_inference_lm_streaming_memory_no_unsloth(
+    model_id,
+    user_input,
+    conversation_history,
+    system_prompt="",
+    temperature=0.3,
+    max_tokens=1000,
+):
+    if model_id.startswith("gpt"):
+        answer, conversation_history = _run_gpt_inference(model_id, user_input, conversation_history, system_prompt, temperature, max_tokens)
+        yield answer
+    else:
+        yield from _run_local_inference(model_id, user_input, conversation_history, system_prompt, temperature, max_tokens, stream=True)
