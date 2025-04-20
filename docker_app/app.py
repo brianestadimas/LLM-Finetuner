@@ -1,6 +1,4 @@
-import io
-import threading
-import time
+import uuid
 from flask import Flask, Response, jsonify, request, send_file
 import requests
 import torch
@@ -10,13 +8,8 @@ from src.qwenvl import FinetuneQwenVL
 from src.llms import FinetuneLM, olive_opt
 from src.llms_multiturn import FinetuneLMAgent
 from flask_cors import CORS
-import os
-import json
+import os, json, sys, logging, re, base64, time, threading, io
 from typing import List
-import sys
-import logging
-import re
-import base64
 from PIL import Image
 from src.inference_phi3v import run_inference_phi3v
 from src.inference_qwenvl import run_inference_qwenvl, run_inference_qwenvl_video
@@ -25,9 +18,14 @@ from src.inference_llms_memory import run_inference_lm_memory, initialize_model,
 from src.inference_llms_memory_no_unsloth import run_inference_lm_memory_no_unsloth, initialize_model_no_unsloth, run_inference_lm_streaming_memory_no_unsloth
 from werkzeug.serving import WSGIRequestHandler
 from werkzeug.utils import secure_filename
+from src.db import init_db, SessionLocal, Conversation, ensure_default_session, DEFAULT_SESSION_ID
+from src.utils import save_history, load_history
+
 WSGIRequestHandler.protocol_version = "HTTP/1.1"
 
 app = Flask(__name__)
+init_db()
+ensure_default_session()
 CORS(app)
 
 # Global variables to manage the finetuning process
@@ -135,7 +133,7 @@ MODEL_HF_URL_LLM = {
 }
 
 ## AGENT Attributes
-conversation_history = []
+conversation_history = load_history(DEFAULT_SESSION_ID)
 SYSTEM_MESSAGE = """You are a helpful AI assistant. Please be clear and concise."""
 
 # RAGS
@@ -624,6 +622,16 @@ def inference_b64():
         print(f"Error in /inference_b64: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.post("/create-session")
+def create_session():
+    sid = str(uuid.uuid4())
+    with SessionLocal() as db:
+        db.add(Conversation(session_id=sid, history=[]))
+        db.commit()
+    return {"session_id": sid}
+
+
 @app.route('/inference-llm', methods=['POST'])
 def inference_llm():
     global conversation_history, SYSTEM_MESSAGE
@@ -641,6 +649,9 @@ def inference_llm():
     max_tokens = int(data.get("max_tokens", 500))
     model_type = data.get("model_type")
     is_agent = data.get("is_agent", False)
+    session_id = data.get("session_id", DEFAULT_SESSION_ID)
+    
+    conversation_history = load_history(session_id)
 
     if model_type not in MODEL_HF_URL_LLM:
         return jsonify({"error": f"Unsupported model_type: {model_type}"}), 400
@@ -683,6 +694,10 @@ def inference_llm():
         response = {"result": final_result}
         if think_content:
             response["think"] = think_content
+            
+        save_history(session_id, conversation_history)
+        if session_id == DEFAULT_SESSION_ID:
+            globals()["conversation_history"] = conversation_history
 
         return jsonify(response), 200
 
@@ -708,14 +723,20 @@ def inference_llm_stream():
     max_tokens = int(data.get("max_tokens", 500))
     model_type = data.get("model_type")
     is_agent = data.get("is_agent", False)
-
+    session_id = data.get("session_id", DEFAULT_SESSION_ID)
+    
+    conversation_history = load_history(session_id)
+     
     if model_type not in MODEL_HF_URL_LLM:
         return jsonify({"error": f"Unsupported model_type: {model_type}"}), 400
 
     model_id = MODEL_HF_URL_LLM[model_type]
 
     def sse_generator():
+        final_response = ""
+        think_content = None
         try:
+            # choose the appropriate streaming generator
             if is_agent:
                 if model_id.split("/")[0] != "unsloth":
                     stream_gen = run_inference_lm_streaming_memory_no_unsloth(
@@ -743,20 +764,38 @@ def inference_llm_stream():
                     model_id=model_id
                 )
 
-            final_response = ""
+            # stream out tokens (or sub‑chunks)
             for token_chunk in stream_gen:
                 final_response += token_chunk
-                yield f"data: {token_chunk}\n\n"
 
-            think_match = re.search(r"^(.*?)</think>", final_response, re.DOTALL)
-            if think_match:
-                think_content = think_match.group(1).strip()
-                final_response = final_response[think_match.end():].strip()
+                if len(token_chunk) > 50:
+                    # split large chunks into 50‑char pieces
+                    for i in range(0, len(token_chunk), 50):
+                        sub = token_chunk[i : i + 50]
+                        yield f"data: {sub}\n\n"
+                        # tiny pause so the client can render incrementally
+                        time.sleep(0.01)
+                else:
+                    yield f"data: {token_chunk}\n\n"
+
+            # emit think event if present
+            match = re.search(r"^(.*?)</think>", final_response, re.DOTALL)
+            if match:
+                think_content = match.group(1).strip()
+                final_response = final_response[match.end():].strip()
                 yield f"event: think\ndata: {think_content}\n\n"
-            yield f"event: end\ndata: {final_response.strip()}\n\n"
+
+            # final end event
+            # yield "event: end\ndata: [END]\n\n"
 
         except Exception as e:
-            yield f"event: error\ndata: {str(e)}\n\n"
+            yield f"data: [ERROR] {str(e)}\n\n"
+            
+        finally:
+            save_history(session_id, conversation_history)
+            if session_id == DEFAULT_SESSION_ID:
+                globals()["conversation_history"] = conversation_history
+
 
     return Response(sse_generator(), mimetype='text/event-stream')
 

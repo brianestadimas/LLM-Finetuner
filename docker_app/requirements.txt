@@ -32,3 +32,5 @@ pdf2image
 beautifulsoup4
 requests
 openai==1.71.0
+sqlalchemy>=2.0
+aiosqlite
