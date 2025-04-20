@@ -627,6 +627,8 @@ def run_inference_lm_streaming_memory(model_id, user_input, conversation_history
         response, history = run_inference_lm_memory_with_rag_single(
             model_id, user_input, conversation_history, system_prompt, model, tokenizer, retriever, temperature, max_tokens
         )
+        conversation_history.append({"role": "user", "content": user_input})
+        conversation_history.append({"role": "assistant", "content": response})
         yield response
         return
     for chunk in chunks:

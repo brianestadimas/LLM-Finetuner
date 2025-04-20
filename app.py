@@ -511,6 +511,7 @@ def inference_llm(model_id):
     input_text = data.get("input")
     temperature = data.get("temperature", 0.5)  # Default: 0.0
     max_tokens = data.get("max_tokens", 1000)    # Default: 500
+    session_id = data.get("session_id", "default")
 
     if not input_text or not model_id:
         return jsonify({"error": "Missing required parameters: input and/or model_id"}), 400
@@ -534,6 +535,7 @@ def inference_llm(model_id):
         "max_tokens": max_tokens,
         "model_type": model_type,
         "is_agent": run.is_agent,
+        "session_id": session_id,
     }
     try:
         # Post JSON payload to the model endpoint.
@@ -553,6 +555,7 @@ def inference_llm_stream_proxy(model_id):
     input_text = data.get("input")
     temperature = data.get("temperature", 0.5)
     max_tokens = data.get("max_tokens", 1000)
+    session_id = data.get("session_id", "default")
 
     if not input_text or not model_id:
         return jsonify({"error": "Missing required parameters: input and/or model_id"}), 400
@@ -573,6 +576,7 @@ def inference_llm_stream_proxy(model_id):
         "max_tokens": int(max_tokens),
         "model_type": model_type,
         "is_agent": run.is_agent,
+        "session_id": session_id,
     }
 
     try:

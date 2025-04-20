@@ -133,7 +133,6 @@ MODEL_HF_URL_LLM = {
 }
 
 ## AGENT Attributes
-conversation_history = load_history(DEFAULT_SESSION_ID)
 SYSTEM_MESSAGE = """You are a helpful AI assistant. Please be clear and concise."""
 
 # RAGS
@@ -354,12 +353,11 @@ def run_model_llm():
 
         def finetune_task(data: List[dict], params: dict):
             global is_running
-            global SYSTEM_MESSAGE, conversation_history
+            global SYSTEM_MESSAGE
             is_running = True
             try:
                 if agent_flag:
                     SYSTEM_MESSAGE = metadata.get("system_prompt", "")
-                    conversation_history = []
                     if params["model_type"].split("/")[0] != "unsloth":
                         pass
                     else:
@@ -634,7 +632,7 @@ def create_session():
 
 @app.route('/inference-llm', methods=['POST'])
 def inference_llm():
-    global conversation_history, SYSTEM_MESSAGE
+    global SYSTEM_MESSAGE
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON payload."}), 400
@@ -679,6 +677,7 @@ def inference_llm():
                 )
             if updated_conversation_history:
                 conversation_history = updated_conversation_history
+                save_history(session_id, conversation_history)
         else:
             result = run_inference_lm(user_input, temperature, max_tokens, model_id)
         
@@ -695,10 +694,6 @@ def inference_llm():
         if think_content:
             response["think"] = think_content
             
-        save_history(session_id, conversation_history)
-        if session_id == DEFAULT_SESSION_ID:
-            globals()["conversation_history"] = conversation_history
-
         return jsonify(response), 200
 
     except Exception as e:
@@ -708,7 +703,7 @@ def inference_llm():
 
 @app.route('/inference-llm/stream', methods=['POST'])
 def inference_llm_stream():
-    global conversation_history, SYSTEM_MESSAGE
+    global SYSTEM_MESSAGE
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON payload."}), 400
@@ -793,9 +788,6 @@ def inference_llm_stream():
             
         finally:
             save_history(session_id, conversation_history)
-            if session_id == DEFAULT_SESSION_ID:
-                globals()["conversation_history"] = conversation_history
-
 
     return Response(sse_generator(), mimetype='text/event-stream')
 
