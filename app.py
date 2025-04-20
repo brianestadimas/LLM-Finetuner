@@ -606,6 +606,7 @@ def create_session_proxy(model_id):
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Upstream create-session failed: {e}"}), 502
 
+
 @app.route('/update_status', methods=['GET'])
 def update_status():
     model_id = request.args.get('model_id')
