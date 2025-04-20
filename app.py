@@ -596,6 +596,7 @@ def inference_llm_stream_proxy(model_id):
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Request to container streaming endpoint failed: {str(e)}"}), 500
 
+
 @app.route("/create-session/<model_id>", methods=["POST"])
 def create_session_proxy(model_id):
     url = f"https://{model_id}.proxy.runpod.net/create-session"
