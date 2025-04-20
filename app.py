@@ -537,6 +537,7 @@ def inference_llm(model_id):
         "is_agent": run.is_agent,
         "session_id": session_id,
     }
+    
     try:
         # Post JSON payload to the model endpoint.
         response = requests.post(model_endpoint, json=payload)
