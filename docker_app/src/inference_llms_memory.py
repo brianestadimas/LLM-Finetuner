@@ -656,3 +656,4 @@ def run_inference_lm_streaming_memory(model_id, user_input, conversation_history
         thread.join()
         conversation_history.append({"role": "user", "content": chunk})
         conversation_history.append({"role": "assistant", "content": generated_text})
+        
