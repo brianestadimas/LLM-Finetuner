@@ -26,7 +26,7 @@ WSGIRequestHandler.protocol_version = "HTTP/1.1"
 app = Flask(__name__)
 init_db()
 ensure_default_session()
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Global variables to manage the finetuning process
 is_running = False

@@ -89,3 +89,4 @@ RUN unset LANCE_API_KEY
 
 # Use flask run to enable debugging
 CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--debug"]
+# CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app", "--workers", "4", "--worker-class", "sync"]
