@@ -65,7 +65,7 @@ flask_handler = logging.StreamHandler(stream=log_file)
 flask_handler.addFilter(ExcludeAPILoggingFilter())
 flask_logger.addHandler(flask_handler)
 
-
+VAIS_CONSOLE_URL = os.environ.get("VAIS_CONSOLE_URL", "https://console.vais.app")
 MODEL_HF_URL = {
     "Phi3V": "microsoft/Phi-3-vision-128k-instruct",
     "Phi3.5V": "microsoft/Phi-3.5-vision-instruct",
@@ -267,7 +267,7 @@ def run_model():
 
                 model_pod_id = metadata.get("model_id")
                 response = requests.get(
-                    "https://console.vais.app/api/update_status",
+                    f"{VAIS_CONSOLE_URL}/api/update_status",
                     params={"model_id": model_pod_id, "status": "finished", "is_llm": False}
                 )
                 if response.status_code == 200:
@@ -281,7 +281,7 @@ def run_model():
                 print(f"ERROR during finetuning: {e}")
                 model_id = metadata.get("model_id")
                 response = requests.get(
-                    "https://console.vais.app/api/update_status",
+                    f"{VAIS_CONSOLE_URL}/api/update_status",
                     params={"model_id": model_id, "status": "failed", "is_llm": False}
                 )
                 if response.status_code == 200:
@@ -345,7 +345,7 @@ def run_model_llm():
         
         try:
             requests.get(
-                "https://console.vais.app/api/update_status",
+                f"{VAIS_CONSOLE_URL}/api/update_status",
                 params={"model_id": model_pod_id, "status": "running", "is_llm": True}
             )
         except:
@@ -422,7 +422,7 @@ def run_model_llm():
                 print("Finetuning completed successfully.")
 
                 response = requests.get(
-                    "https://console.vais.app/api/update_status",
+                    f"{VAIS_CONSOLE_URL}/api/update_status",
                     params={"model_id": model_pod_id, "status": "finished", "is_llm": True}
                 )
                 if response.status_code == 200:
@@ -436,7 +436,7 @@ def run_model_llm():
                 print(f"ERROR during finetuning: {e}")
                 model_id = metadata.get("model_id")
                 response = requests.get(
-                    "https://console.vais.app/api/update_status",
+                    f"{VAIS_CONSOLE_URL}/api/update_status",
                     params={"model_id": model_id, "status": "failed", "is_llm": True}
                 )
                 if response.status_code == 200:
