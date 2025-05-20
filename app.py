@@ -696,6 +696,24 @@ def get_retrain_info():
         "peft_dropout": run.peft_dropout if run.peft_dropout is not None else 0.0
     }), 200
 
+@app.route('/filter_livetalking_image', methods=['GET'])
+def filter_livetalking_image():
+    try:
+        runpod.api_key = Config.RUNPOD_KEY  # or hardcode it if needed
+
+        all_pods = runpod.get_pods()
+
+        for pod in all_pods:
+            if pod.get("imageName", "").lower() == "brianarfeto/livetalking:latest":
+                return jsonify({
+                    "result": pod["id"]
+                }), 200
+
+        return jsonify({"result": None}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
