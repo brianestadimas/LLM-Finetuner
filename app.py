@@ -10,6 +10,7 @@ from flask_cors import CORS
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from src import User, Run
+import time
 
 app = create_app()
 CORS(app)
@@ -108,6 +109,7 @@ def finetune_route():
                     "VAIS_CONSOLE_URL": os.getenv(Config.VAIS_CONSOLE_URL, "https://console.vais.app")
                 }
             )
+            time.sleep(3)
             podcast_id = pod.get('id') + "-5000"
             if podcast_id:
                 break  
