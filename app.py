@@ -106,10 +106,9 @@ def finetune_route():
                 container_disk_in_gb=container_size,
                 ports="5000/http",
                 env={
-                    "VAIS_CONSOLE_URL": os.getenv(Config.VAIS_CONSOLE_URL, "https://console.vais.app")
+                    "VAIS_CONSOLE_URL": "https://console.vais.app"
                 }
             )
-            time.sleep(3)
             podcast_id = pod.get('id') + "-5000"
             if podcast_id:
                 break  
